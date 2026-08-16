@@ -24,7 +24,7 @@ from datetime import datetime
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ICON_DIR = os.path.join(BASE_DIR, "static", "icns")
 POSTS_FILE = os.path.join(BASE_DIR, "posts.json")
-DATA_FILE = os.path.join(BASE_DIR, "data.son")
+DATA_FILE = os.path.join(BASE_DIR, "data.json")
 UPLOAD_DIR = os.path.join(BASE_DIR, "static", "uploads")
 NOVELS_FILE = os.path.join(BASE_DIR, "novls.json") # ★新規：小説管理JSON
 
