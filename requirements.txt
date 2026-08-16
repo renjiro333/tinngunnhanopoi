@@ -3,4 +3,4 @@ gunicorn
 Pillow
 Werkzeug
 Flask-Session
-```[cite: 1, 2]
+[cite: 1, 2]
