@@ -1,0 +1,6 @@
+Flask
+gunicorn
+Pillow
+Werkzeug
+Flask-Session
+```[cite: 1]
