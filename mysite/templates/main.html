@@ -1,1 +1,658 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>教育用学習サイト</title>
+  <style id="main-style">
+    body { font-family: sans-serif; margin: 0; background: #f0f8ff; display: flex; flex-direction: column; justify-content: flex-start; height: 100vh; overflow: hidden; transition: 0.3s; }
+    .top-bar { background: #fff; border-bottom: 2px solid #00bcd4; padding: 6px 15px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .app-wrapper { display: flex; width: 95vw; max-width: 1400px; height: calc(95vh - 44px); margin: 10px auto 0; gap: 15px; }
+    .column { background: #fff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: flex; flex-direction: column; padding: 20px; box-sizing: border-box; }
+    .col-left { flex: 1; overflow-y: auto; }
+    .col-center { flex: 3; height: 100%; overflow-y: auto; min-width: 0; }
+    .col-right { flex: 1.2; display: flex; flex-direction: column; gap: 15px; height: 100%; background: transparent; padding: 0; min-width: 250px; }
+    .hot-section { background: #fffef0; border-radius: 12px; padding: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); flex: 1; overflow-y: auto; }
+    .member-section { background: #f0fff0; border-radius: 12px; padding: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); height: 180px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .user-horizontal-list { display: flex; flex-direction: row; overflow-x: auto; gap: 15px; padding: 10px 5px; width: 100%; box-sizing: border-box; scrollbar-width: thin; }
+    .user-horizontal-list::-webkit-scrollbar { height: 6px; }
+    .user-horizontal-list::-webkit-scrollbar-thumb { background: #4caf50; border-radius: 10px; }
+    .user-card { flex: 0 0 80px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+    .user-card img { width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 3px solid #4caf50; box-shadow: 0 3px 8px rgba(0,0,0,0.15); }
+    .user-card span { font-size: 0.75em; margin-top: 8px; font-weight: bold; color: #333; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .user-status-area { display: flex; align-items: center; gap: 10px; }
+    .current-user-icon { width: 40px; height: 40px; border-radius: 50%; border: 2px solid #00bcd4; object-fit: cover; box-shadow: 0 2px 5px rgba(0,0,0,0.1); cursor: pointer; }
+    #post-form textarea { width: 100%; box-sizing: border-box; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 8px; resize: none; font-size: 1em; }
+    .post { border-bottom: 1px solid #eee; padding: 15px 0; }
+    .reply-post { margin-left: 50px; border-left: 4px solid #00bcd4; padding: 10px 15px; background: #f9fdfd; margin-top: -1px; border-bottom: 1px solid #eee; }
+    .post-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .post img.user-icon { width: 45px; height: 45px; border-radius: 50%; border: 1px solid #ddd; }
+    .reply-post img.user-icon { width: 32px; height: 32px; }
+    .media-content { max-width: 80%; border-radius: 10px; margin-top: 10px; display: block; border: 1px solid #eee; object-fit: contain; }
+    .file-detail-desc { font-size: 10px; color: #444; margin-top: 5px; background: #f0f0f0; padding: 6px; border-radius: 4px; width: fit-content; font-weight: bold; border-left: 3px solid #00bcd4; }
+    .yt-container { width: 80%; aspect-ratio: 16/9; margin-top: 10px; border-radius: 8px; overflow: hidden; }
+    .yt-container iframe { width: 100%; height: 100%; border: none; }
+    input[type="file"] { display: none; }
+    .custom-file-btn { display: inline-block; padding: 8px 16px; cursor: pointer; background: #fff; border: 2px solid #00bcd4; border-radius: 20px; color: #00bcd4; font-weight: bold; font-size: 0.8em; transition: 0.2s; }
+    .refresh-btn { background: #fff; border: 1px solid #00bcd4; color: #00bcd4; padding: 5px 10px; border-radius: 15px; cursor: pointer; font-size: 0.8em; font-weight: bold; transition: 0.2s; }
+    .refresh-btn:hover { background: #00bcd4; color: #fff; }
+    #login-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9999; justify-content: center; align-items: center; }
+    .login-container { width: 380px; background: #fff; padding: 30px; border-radius: 12px; position: relative; }
+    .dynamic-login-title { font-size: 1.2em; text-align: center; font-weight: bold; margin-bottom: 15px; }
+    .hidden-user-list { display: none; border: 2px solid #0f0; padding: 15px; background: #000; color: #0f0; font-family: monospace; position: fixed; bottom: 20px; left: 20px; z-index: 10000; max-height: 300px; overflow-y: auto; }
+    .debug-mode * { font-family: monospace !important; border-radius: 0 !important; }
+    .debug-mode body { background: #c0c0c0 !important; }
+    #icon-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9999; justify-content: center; align-items: center; }
+    .icon-container { width: 340px; background: #fff; padding: 25px; border-radius: 12px; position: relative; text-align: center; }
+    body.ds-mode { background: #1a1a2e; overflow: auto; height: auto; display: block; }
+    body.ds-mode .app-wrapper { display: block; width: 100%; max-width: 400px; margin: 0 auto; height: auto; }
+    body.ds-mode .col-left { display: none; }
+    body.ds-mode .col-right { display: none; }
+    body.ds-mode .col-center { width: 100%; height: auto; overflow: visible; box-shadow: none; border-radius: 0; }
+    body.ds-mode .top-bar { font-size: 0.75em; padding: 4px 8px; }
+    body.ds-mode #post-form textarea { font-size: 0.85em; }
+    body.ds-mode .post { padding: 8px 0; font-size: 0.8em; }
+    body.ds-mode .post img.user-icon { width: 30px; height: 30px; }
+    body.ds-mode .media-content { max-width: 100%; }
+    body.ds-mode .yt-container { width: 100%; }
+    .ds-btn { background: #1a1a2e; color: #00bcd4; border: 2px solid #00bcd4; padding: 4px 10px; border-radius: 10px; cursor: pointer; font-size: 0.8em; font-weight: bold; }
+    .ds-btn.active { background: #00bcd4; color: #fff; }
+  </style>
+</head>
+<body>
+<!-- トップバー -->
+<div class="top-bar">
+  <button class="ds-btn" id="ds-toggle-btn" onclick="toggleDS()">🎮 3DSモード</button>
+  <span style="font-size:0.8em; color:#888;" id="ds-status"></span>
+  <a href="/full" style="margin-left:8px; padding:4px 10px; background:#fff; border:2px solid #aaa; border-radius:10px; color:#666; font-size:0.8em; font-weight:bold; text-decoration:none;">← 戻る</a>
+</div>
 
+<!-- ログインオーバーレイ -->
+<div id="login-overlay" style="display:none;">
+  <div class="login-container">
+    <span style="position:absolute; top:10px; right:15px; cursor:pointer; font-size:1.5em;" onclick="closeModal()">×</span>
+    <div id="dynamic-title" class="dynamic-login-title">ログイン</div>
+    <div style="display:flex; border-bottom:2px solid #00bcd4; margin-bottom:20px;">
+      <div id="mt-reg" style="flex:1; text-align:center; padding:10px; cursor:pointer; font-weight:bold; color:#00bcd4;" onclick="swM('register')">初めて</div>
+      <div id="mt-log" style="flex:1; text-align:center; padding:10px; cursor:pointer; font-weight:bold; color:#888;" onclick="swM('login')">登録済み</div>
+    </div>
+    <input type="text" id="login-username" placeholder="名前を入力" style="width:100%; padding:12px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box;">
+    <div id="mi-sect" style="margin-top:15px;">
+      <label class="custom-file-btn">
+        <input type="file" id="login-icon-file" accept=".png" onchange="upName(this,'mn-icon')">アイコン選択 (.png)
+      </label>
+      <span id="mn-icon" style="font-size:0.7em; color:#888; margin-left:5px;"></span>
+    </div>
+    <p id="login-err" style="color:red; font-size:0.85em; min-height:1.2em; margin-top:8px;"></p>
+    <button onclick="doLogin()" style="width:100%; padding:12px; background:#00bcd4; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">入室する</button>
+  </div>
+</div>
+
+<!-- アイコン変更モーダル -->
+<div id="icon-overlay" style="display:none;">
+  <div class="icon-container">
+    <span style="position:absolute; top:10px; right:15px; cursor:pointer; font-size:1.5em;" onclick="closeIconModal()">×</span>
+    <h3 style="margin-top:0;">アイコン変更</h3>
+    <img id="icon-preview" src="" style="width:80px; height:80px; border-radius:50%; border:3px solid #00bcd4; object-fit:cover; margin-bottom:15px;">
+    <div>
+      <label class="custom-file-btn">
+        <input type="file" id="icon-change-file" accept=".png" onchange="previewIcon(this)">新しいアイコンを選ぶ (.png)
+      </label>
+    </div>
+    <p id="icon-err" style="color:red; font-size:0.85em; min-height:1.2em; margin-top:8px;"></p>
+    <button onclick="doChangeIcon()" style="width:100%; padding:12px; background:#00bcd4; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; margin-top:10px;">変更する</button>
+  </div>
+</div>
+
+<div class="app-wrapper">
+  <!-- 左カラム：Gallery -->
+  <div class="column col-left">
+    <strong style="border-bottom: 2px solid #00bcd4; display:block; padding-bottom:5px;">🎨 Gallery</strong>
+    <div id="media-gallery" style="margin-top:15px;"></div>
+  </div>
+
+  <!-- 中央カラム：投稿 -->
+  <div class="column col-center">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+      <div style="display:flex; align-items:center; gap:15px;">
+        <h2 style="font-size:1.1em; margin:0;">User: <span id="disp-username">{{ username }}</span></h2>
+        <button class="refresh-btn" onclick="load()">更新 ↻</button>
+      </div>
+      <div class="user-status-area">
+        <div id="login-btn-area">
+          {% if sid and sid != 'None' %}
+            <img src="/static/icons/{{ user_icon_filename }}" class="current-user-icon" title="{{ username }} (クリックでアイコン変更)" onclick="openIconModal()" onerror="this.src='/static/icons/default.png'">
+          {% else %}
+            <button onclick="openModal()" style="background:#00bcd4; color:#fff; border:none; padding:5px 15px; border-radius:15px; cursor:pointer;">ログイン</button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <form id="post-form" onsubmit="return submitPost(event)">
+      <input type="hidden" name="action_type" value="post">
+      <input type="hidden" name="sid" id="sid-input" value="{{ sid }}">
+      <input type="hidden" name="reply_to" id="rep-input">
+      <div id="rep-box" style="display:none; color:#00bcd4; font-size:0.8em; margin-bottom:5px; font-weight:bold; cursor:pointer;" onclick="cancelR()"></div>
+      <textarea name="message" rows="2" placeholder="メッセージを投稿..."></textarea>
+      <div style="display:flex; align-items: center; margin-top:10px;">
+        <label class="custom-file-btn" style="border-color:#ccc; color:#666;">
+          <input type="file" name="post_file" id="post-file-input" onchange="upName(this, 'n-post')">ファイルを添付
+        </label>
+        <span id="n-post" style="font-size:0.7em; color:#888; margin-left:10px;"></span>
+        <button type="submit" id="submit-btn" style="margin-left:auto; width:100px; padding:10px; background:#00bcd4; color:#fff; border:none; border-radius:6px; font-weight:bold;">投稿</button>
+      </div>
+    </form>
+
+    <div id="post-list" style="margin-top:20px;"></div>
+  </div>
+
+  <!-- 右カラム -->
+  <div class="col-right">
+    <div class="column hot-section">
+      <strong style="border-bottom: 2px solid #ff4081; display:block; padding-bottom:5px;">🔥 注目の話題</strong>
+      <div id="hot-posts" style="margin-top:15px;"></div>
+    </div>
+    <div class="column member-section">
+      <strong style="border-bottom: 2px solid #4caf50; display:block; padding-bottom:5px;">👥 メンバー</strong>
+      <div class="user-horizontal-list" id="user-container"></div>
+    </div>
+  </div>
+</div>
+
+<div id="hidden-list" class="hidden-user-list">
+  <div style="border-bottom: 1px solid #0f0; margin-bottom:10px;">>> SYS_USER_LIST</div>
+  {% for n in registered_users %}<div>{{ n }}</div>{% endfor %}
+</div>
+
+<script>
+  var SID = "{{ sid or '' }}";
+  var CURRENT_USER = "{{ username }}";
+  var _curMode = 'register';
+  var _dsMode = false;
+  var isPosting = false;  // 連打防止
+
+  function toggleDS() {
+    _dsMode = !_dsMode;
+    var btn = document.getElementById('ds-toggle-btn');
+    var status = document.getElementById('ds-status');
+    if (_dsMode) {
+      document.body.className = 'ds-mode';
+      btn.className = 'ds-btn active';
+      status.textContent = '3DSモード ON';
+    } else {
+      document.body.className = '';
+      btn.className = 'ds-btn';
+      status.textContent = '';
+    }
+  }
+
+  function openModal() { document.getElementById('login-overlay').style.display = 'flex'; }
+  function closeModal() { document.getElementById('login-overlay').style.display = 'none'; }
+  function checkLog() { 
+    if(!SID || SID === "None" || SID === "") { 
+      openModal(); 
+      return false; 
+    } 
+    return true; 
+  }
+
+  function openIconModal() {
+    if (!checkLog()) return;
+    var img = document.getElementById('icon-preview');
+    var currentIcon = document.querySelector('.current-user-icon');
+    img.src = currentIcon ? currentIcon.src : '/static/icons/default.png';
+    document.getElementById('icon-err').textContent = '';
+    document.getElementById('icon-overlay').style.display = 'flex';
+  }
+  function closeIconModal() { document.getElementById('icon-overlay').style.display = 'none'; }
+  function previewIcon(input) {
+    if (input.files && input.files[0]) {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        document.getElementById('icon-preview').src = e.target.result;
+      };
+      reader.readAsDataURL(input.files[0]);
+    }
+  }
+  function doChangeIcon() {
+    var file = document.getElementById('icon-change-file').files[0];
+    var errEl = document.getElementById('icon-err');
+    if (!file) { errEl.textContent = 'ファイルを選んでください'; return; }
+    var fd = new FormData();
+    fd.append('action_type', 'change_icon');
+    fd.append('sid', SID);
+    fd.append('icon', file);
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/classroom', true);
+    xhr.onload = function() {
+      try {
+        var data = JSON.parse(xhr.responseText);
+        if (data.status === 'ok') {
+          var imgs = document.querySelectorAll('.current-user-icon');
+          for (var i = 0; i < imgs.length; i++) {
+            imgs[i].src = '/static/icons/' + data.icon + '?t=' + Date.now();
+          }
+          closeIconModal();
+          load();
+        } else {
+          errEl.textContent = 'エラー: ' + (data.error || '失敗しました');
+        }
+      } catch(e) { errEl.textContent = '通信エラー'; }
+    };
+    xhr.send(fd);
+  }
+
+  function swM(m) {
+    _curMode = m;
+    var isR = (m === 'register');
+    document.getElementById('mi-sect').style.display = isR ? 'block' : 'none';
+    document.getElementById('mt-reg').style.color = isR ? '#00bcd4' : '#888';
+    document.getElementById('mt-log').style.color = isR ? '#888' : '#00bcd4';
+    document.getElementById('dynamic-title').innerText = isR ? "ログイン" : "お帰りなさい";
+  }
+
+  function upName(input, targetId) { 
+    document.getElementById(targetId).innerText = input.files.length > 0 ? input.files[0].name : ""; 
+  }
+
+  function cancelR() { 
+    document.getElementById("rep-input").value = ""; 
+    document.getElementById("rep-box").style.display = "none"; 
+  }
+
+  function doLogin() {
+    var name = document.getElementById('login-username').value.trim();
+    var errEl = document.getElementById('login-err');
+    errEl.textContent = "";
+    if (!name) { errEl.textContent = "名前を入力してください"; return; }
+    var fd = new FormData();
+    fd.append("action_type", _curMode);
+    fd.append("mode", _curMode);
+    fd.append("username", name);
+    if (_curMode === "register") {
+      var iconFile = document.getElementById('login-icon-file').files[0];
+      if (!iconFile) { errEl.textContent = "アイコン(.png)を選んでください"; return; }
+      fd.append("icon", iconFile);
+    }
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/classroom', true);
+    xhr.onload = function() {
+      try {
+        var data = JSON.parse(xhr.responseText);
+        if (data.status === "ok") {
+          SID = data.sid;
+          CURRENT_USER = name;
+          document.getElementById('sid-input').value = SID;
+          document.getElementById('disp-username').textContent = name;
+          if (history.replaceState) history.replaceState({}, "", "/classroom?sid=" + SID);
+          document.getElementById('login-btn-area').innerHTML =
+            '<img src="/static/icons/' + (data.icon || 'default.png') + '" class="current-user-icon" title="' + name + ' (クリックでアイコン変更)" onclick="openIconModal()" onerror="this.src=\'/static/icons/default.png\'">';
+          closeModal();
+          load();
+        } else {
+          errEl.textContent = "エラー: " + (data.error || "失敗しました");
+        }
+      } catch(e) { errEl.textContent = "通信エラーが発生しました"; }
+    };
+    xhr.onerror = function() { errEl.textContent = "通信エラーが発生しました"; };
+    xhr.send(fd);
+  }
+
+  // 日本時間表示補正
+  function formatJST(timeStr) {
+    if (!timeStr) return '';
+    const [monthDay, time] = timeStr.split(' ');
+    if (!monthDay || !time) return timeStr;
+    const [month, day] = monthDay.split('/').map(Number);
+    const [hour, min] = time.split(':').map(Number);
+    const now = new Date();
+    const year = now.getFullYear();
+    let date = new Date(year, month - 1, day, hour, min);
+    date.setHours(date.getHours() + 9);
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const h = String(date.getHours()).padStart(2, '0');
+    const mi = String(date.getMinutes()).padStart(2, '0');
+    return `${m}/${d} ${h}:${mi}`;
+  }
+
+  // 投稿関数（連打防止）
+  function submitPost(e) {
+    e.preventDefault();
+    if (!checkLog() || isPosting) return false;
+
+    isPosting = true;
+    const submitBtn = document.getElementById('submit-btn');
+    const originalText = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.textContent = "投稿中...";
+
+    var form = document.getElementById('post-form');
+    var fd = new FormData(form);
+    fd.set('sid', SID);
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/classroom', true);
+
+    xhr.onload = function() {
+      isPosting = false;
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalText;
+
+      if (xhr.status === 200) {
+        try {
+          var res = JSON.parse(xhr.responseText);
+          if (res.status === "ok") {
+            form.reset();
+            document.getElementById('n-post').textContent = '';
+            cancelR();
+            load();
+          } else {
+            alert("投稿失敗: " + (res.error || "不明なエラー"));
+          }
+        } catch(e) {
+          form.reset();
+          document.getElementById('n-post').textContent = '';
+          cancelR();
+          load();
+        }
+      } else {
+        alert("サーバーエラー: " + xhr.status);
+      }
+    };
+
+    xhr.onerror = function() {
+      isPosting = false;
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalText;
+      alert('通信エラー');
+    };
+
+    xhr.send(fd);
+    return false;
+  }
+
+  function getYT(t) {
+    if (!t || typeof t !== 'string') return "";
+    var r = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+    var m = t.match(r);
+    return m ? '<div class="yt-container"><iframe src="https://www.youtube.com/embed/' + m[1] + '" allowfullscreen></iframe></div>' : "";
+  }
+
+  var keys = {};
+  window.addEventListener('keydown', function(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    var key = (e.key || '').toLowerCase();
+    keys[key] = true;
+    var need1 = ['p','o','a','s','d','l'];
+    var need2 = ['p','o','a','s','d'];
+    var ok1 = true, ok2 = true;
+    for (var i = 0; i < need1.length; i++) if (!keys[need1[i]]) { ok1 = false; break; }
+    for (var i = 0; i < need2.length; i++) if (!keys[need2[i]]) { ok2 = false; break; }
+    if (ok1) { 
+      document.body.classList.toggle('debug-mode'); 
+      keys = {}; 
+    }
+    else if (ok2) { 
+      var el = document.getElementById('hidden-list'); 
+      el.style.display = el.style.display === 'block' ? 'none' : 'block'; 
+      keys = {}; 
+    }
+  });
+  window.addEventListener('keyup', function(e) { 
+    delete keys[(e.key || '').toLowerCase()]; 
+  });
+
+  function delP(id) {
+    if(!confirm("この投稿を削除しますか？")) return;
+    var fd = new FormData();
+    fd.append("action_type", "delete");
+    fd.append("sid", SID);
+    fd.append("post_id", id);
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/classroom', true);
+    xhr.onload = function() { load(); };
+    xhr.send(fd);
+  }
+
+  function doL(id) {
+    if(!checkLog()) return;
+    var l;
+    try { l = JSON.parse(localStorage.getItem('lk') || '[]'); } catch(e) { l = []; }
+    var a = (l.indexOf(id) >= 0) ? "minus" : "plus";
+    if (a === "plus") l.push(id); else { var nl = []; for(var i=0;i<l.length;i++) if(l[i]!==id) nl.push(l[i]); l=nl; }
+    try { localStorage.setItem('lk', JSON.stringify(l)); } catch(e) {}
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/like', true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.onload = function() { load(); };
+    xhr.send(JSON.stringify({id: id, action: a}));
+  }
+
+  function setR(id, u) {
+    if(!checkLog()) return;
+    document.getElementById("rep-input").value = id;
+    var rb = document.getElementById("rep-box");
+    rb.innerText = "↪ " + u + " への返信を解除する (クリック)";
+    rb.style.display = "block";
+    var cc = document.querySelector('.col-center');
+    if (cc && cc.scrollTo) cc.scrollTo({ top: 0, behavior: 'smooth' });
+    else if (cc) cc.scrollTop = 0;
+  }
+
+  function fixPortrait(el) {
+    function apply() {
+      var nw = el.videoWidth || el.naturalWidth || 0;
+      var nh = el.videoHeight || el.naturalHeight || 0;
+      if (nw > 0 && nh > nw) {
+        el.style.width = '60%';
+        el.style.height = 'auto';
+      }
+    }
+    el.addEventListener('loadedmetadata', apply);
+    el.addEventListener('load', apply);
+    if (el.readyState >= 1 || el.complete) apply();
+  }
+
+  function fileIconSVG() {
+    return '<svg width="24" height="30" viewBox="0 0 24 30" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="1" width="18" height="26" rx="2" fill="white" stroke="#aaa" stroke-width="1.5"/><path d="M13 1v7h7" fill="none" stroke="#aaa" stroke-width="1.5"/><path d="M13 1l7 7" fill="none" stroke="#aaa" stroke-width="1.5"/><rect x="4" y="13" width="11" height="1.5" rx="1" fill="#ccc"/><rect x="4" y="17" width="8" height="1.5" rx="1" fill="#ccc"/><rect x="4" y="21" width="10" height="1.5" rx="1" fill="#ccc"/></svg>';
+  }
+
+  function appendGalleryItem(container, f, byLabel) {
+    var url = f.url || ('/static/uploads/' + f.save_name);
+    var ext = (f.ext || "").replace(".", "").toUpperCase();
+    var wrap = document.createElement('div');
+    wrap.style.cssText = "margin-bottom:12px; border:1px solid #eee; padding:8px; border-radius:8px; background:#fff; overflow:hidden;";
+    if (f.type === "image") {
+      var img = document.createElement('img');
+      img.src = url;
+      img.style.cssText = "width:100%; border-radius:5px; display:block;";
+      fixPortrait(img);
+      wrap.appendChild(img);
+    } else if (f.type === "video") {
+      var vid = document.createElement('video');
+      vid.controls = true;
+      vid.preload = "metadata";
+      vid.style.cssText = "width:100%; border-radius:5px; display:block; background:#000;";
+      vid.src = url;
+      fixPortrait(vid);
+      wrap.appendChild(vid);
+    } else if (f.type === "audio") {
+      var lbl = document.createElement('div');
+      lbl.style.cssText = "font-size:0.8em; color:#555; margin-bottom:6px;";
+      lbl.textContent = "🎵 ." + ext;
+      wrap.appendChild(lbl);
+      var aud = document.createElement('audio');
+      aud.controls = true;
+      aud.preload = "metadata";
+      aud.style.cssText = "width:100%; display:block;";
+      aud.src = url;
+      wrap.appendChild(aud);
+    } else {
+      var fileIcon = document.createElement('div');
+      fileIcon.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-top:4px;";
+      var fileRow = document.createElement('div');
+      fileRow.style.cssText = "display:inline-flex; align-items:center; gap:8px; padding:8px 12px; background:#f5f5f5; border:1px solid #ddd; border-radius:8px; font-size:0.85em; color:#444;";
+      fileRow.innerHTML = fileIconSVG() + '<span>' + f.save_name + '</span>';
+      var dlBtn = document.createElement('a');
+      dlBtn.href = url;
+      dlBtn.download = f.save_name;
+      dlBtn.textContent = '⬇ ダウンロード';
+      dlBtn.style.cssText = "display:inline-block; padding:5px 12px; background:#00bcd4; color:#fff; border-radius:6px; font-size:0.8em; font-weight:bold; text-decoration:none;";
+      fileIcon.appendChild(fileRow);
+      fileIcon.appendChild(dlBtn);
+      wrap.appendChild(fileIcon);
+    }
+    var extLabel = document.createElement('div');
+    extLabel.style.cssText = "font-size:9px; color:#aaa; margin-top:3px;";
+    extLabel.textContent = '.' + ext;
+    wrap.appendChild(extLabel);
+    if (byLabel) {
+      var by = document.createElement('div');
+      by.style.cssText = "font-size:9px; color:#888; text-align:right; margin-top:4px;";
+      by.textContent = byLabel;
+      wrap.appendChild(by);
+    }
+    container.appendChild(wrap);
+  }
+
+  function renderPost(p, isRep, gDiv, lk) {
+    if (!p) return document.createElement('div');
+    var wrap = document.createElement('div');
+    wrap.className = isRep ? 'reply-post' : 'post';
+    var url = p.file ? ('/static/uploads/' + p.file.save_name) : null;
+    var ext = p.file ? (p.file.ext || "").replace(".", "").toUpperCase() : "";
+    if (p.file && !isRep) {
+      appendGalleryItem(gDiv, { save_name: p.file.save_name, type: p.file.type, ext: p.file.ext, url: url }, 'by ' + p.user);
+    }
+    wrap.innerHTML = '<div class="post-header"><img src="/static/icons/' + (p.icon || 'default.png') + '" class="user-icon" onerror="this.src=\'/static/icons/default.png\'"><b>' + (p.user || 'Unknown') + '</b><span style="font-size:0.7em; color:#999; margin-left:auto;">' + formatJST(p.time) + '</span></div>';
+    var body = document.createElement('div');
+    body.style.paddingLeft = isRep ? '42px' : '55px';
+    var msg = document.createElement('p');
+    msg.style.cssText = "margin:5px 0; line-height:1.5;";
+    msg.textContent = p.message || '';
+    body.appendChild(msg);
+    var ytHtml = getYT(p.message);
+    if (ytHtml) {
+      var ytDiv = document.createElement('div');
+      ytDiv.innerHTML = ytHtml;
+      body.appendChild(ytDiv);
+    }
+    if (p.file) {
+      if (p.file.type === "image") {
+        var img2 = document.createElement('img');
+        img2.src = url;
+        img2.className = "media-content";
+        fixPortrait(img2);
+        body.appendChild(img2);
+        var lbl2 = document.createElement('div');
+        lbl2.className = "file-detail-desc";
+        lbl2.textContent = "▲ これは ." + ext + " ファイルです";
+        body.appendChild(lbl2);
+      } else if (p.file.type === "video") {
+        var vid2 = document.createElement('video');
+        vid2.controls = true;
+        vid2.preload = "metadata";
+        vid2.className = "media-content";
+        vid2.src = url;
+        fixPortrait(vid2);
+        body.appendChild(vid2);
+        var lbl3 = document.createElement('div');
+        lbl3.className = "file-detail-desc";
+        lbl3.textContent = "▲ これは ." + ext + " ファイルです";
+        body.appendChild(lbl3);
+      } else if (p.file.type === "audio") {
+        var aud2 = document.createElement('audio');
+        aud2.controls = true;
+        aud2.preload = "metadata";
+        aud2.className = "media-content";
+        aud2.src = url;
+        body.appendChild(aud2);
+        var lbl4 = document.createElement('div');
+        lbl4.className = "file-detail-desc";
+        lbl4.textContent = "▲ これは ." + ext + " ファイルです";
+        body.appendChild(lbl4);
+      } else {
+        var fileIcon2 = document.createElement('div');
+        fileIcon2.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-top:10px;";
+        var fileRow2 = document.createElement('div');
+        fileRow2.style.cssText = "display:inline-flex; align-items:center; gap:8px; padding:8px 12px; background:#f5f5f5; border:1px solid #ddd; border-radius:8px; font-size:0.85em; color:#444;";
+        fileRow2.innerHTML = fileIconSVG() + '<span>' + (p.file.original_name || p.file.save_name) + '</span>';
+        var dlBtn2 = document.createElement('a');
+        dlBtn2.href = url;
+        dlBtn2.download = p.file.original_name || p.file.save_name;
+        dlBtn2.textContent = '⬇ ダウンロード';
+        dlBtn2.style.cssText = "display:inline-block; padding:5px 12px; background:#00bcd4; color:#fff; border-radius:6px; font-size:0.8em; font-weight:bold; text-decoration:none;";
+        fileIcon2.appendChild(fileRow2);
+        fileIcon2.appendChild(dlBtn2);
+        body.appendChild(fileIcon2);
+        var lbl5 = document.createElement('div');
+        lbl5.className = "file-detail-desc";
+        lbl5.textContent = "▲ これは ." + ext + " ファイルです";
+        body.appendChild(lbl5);
+      }
+    }
+    var liked = (lk.indexOf(p.id) >= 0);
+    var actions = document.createElement('div');
+    actions.style.cssText = "margin-top:10px; font-size:0.8em;";
+    actions.innerHTML = '<span style="color:#00bcd4; cursor:pointer; font-weight:bold;" onclick="setR(\'' + p.id + '\',\'' + (p.user || '') + '\')">返信</span>'
+      + '<span style="margin-left:20px; color:' + (liked ? '#ff4081' : '#ccc') + '; cursor:pointer; font-weight:bold;" onclick="doL(\'' + p.id + '\')">❤️ ' + (p.likes || 0) + '</span>'
+      + (p.user === CURRENT_USER ? '<span style="margin-left:15px; color:#ff4081; cursor:pointer; font-weight:bold;" onclick="delP(\'' + p.id + '\')">削除</span>' : '');
+    body.appendChild(actions);
+    wrap.appendChild(body);
+    return wrap;
+  }
+
+  function load() {
+    var xhr1 = new XMLHttpRequest();
+    xhr1.open('GET', '/classroom?get_type=json', true);
+    xhr1.onload = function() {
+      var data;
+      try { data = JSON.parse(xhr1.responseText); } catch(e) { console.error("JSON parse error"); return; }
+      var xhr2 = new XMLHttpRequest();
+      xhr2.open('GET', '/api/files', true);
+      xhr2.onload = function() {
+        var filesData;
+        try { filesData = JSON.parse(xhr2.responseText); } catch(e) { filesData = {files:[]}; }
+        var lk;
+        try { lk = JSON.parse(localStorage.getItem('lk') || '[]'); } catch(e) { lk = []; }
+        var pDiv = document.getElementById("post-list");
+        var gDiv = document.getElementById("media-gallery");
+        var uCon = document.getElementById("user-container");
+        var hDiv = document.getElementById("hot-posts");
+        pDiv.innerHTML = ""; gDiv.innerHTML = ""; uCon.innerHTML = ""; hDiv.innerHTML = "";
+        var users = data.all.filter(function(u) { return u.type === "user"; });
+        for (var i = 0; i < users.length; i++) {
+          var u = users[i];
+          uCon.innerHTML += '<div class="user-card"><img src="/static/icons/' + (u.icon || 'default.png') + '" onerror="this.src=\'/static/icons/default.png\'"><span>' + (u.user || '') + '</span></div>';
+        }
+        var posts = data.all.filter(function(p) { return p.type !== "user"; });
+        var parents = posts.filter(function(p) { return !p.reply_to; });
+        var replies = posts.filter(function(p) { return p.reply_to; });
+        var postMediaNames = {};
+        var reversed = parents.slice().reverse();
+        for (var i = 0; i < reversed.length; i++) {
+          var p = reversed[i];
+          pDiv.appendChild(renderPost(p, false, gDiv, lk));
+          if (p.file && !p.reply_to) postMediaNames[p.file.save_name] = true;
+          var reps = replies.filter(function(r) { return r.reply_to === p.id; });
+          for (var j = 0; j < reps.length; j++) pDiv.appendChild(renderPost(reps[j], true, gDiv, lk));
+        }
+        var files = filesData.files || [];
+        for (var i = 0; i < files.length; i++) {
+          if (!postMediaNames[files[i].save_name]) appendGalleryItem(gDiv, files[i], null);
+        }
+        for (var i = 0; i < data.hot.length; i++) {
+          var hp = data.hot[i];
+          hDiv.innerHTML += '<div style="margin-bottom:12px; border-left:4px solid #ff4081; padding:8px 12px; background:rgba(255,64,129,0.03); border-radius:0 8px 8px 0;"><div style="font-weight:bold; font-size:0.9em;">' + (hp.user || '') + '</div><div style="font-size:0.8em; color:#555; margin:4px 0;">' + (hp.message || '').substring(0,40) + '...</div><div style="font-size:0.75em; color:#ff4081; font-weight:bold;">❤️ ' + (hp.likes || 0) + ' likes</div></div>';
+        }
+      };
+      xhr2.send();
+    };
+    xhr1.send();
+  }
+
+  window.onload = load;
+</script>
+</body>
+</html>
