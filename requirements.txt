@@ -4,3 +4,5 @@ Pillow
 Werkzeug
 Flask-Session
 python-dotenv
+google-generativeai
+requests
