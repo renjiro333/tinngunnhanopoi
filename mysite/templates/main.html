@@ -30,7 +30,7 @@
     .user-status-area { display: flex; align-items: center; gap: 10px; }
     .current-user-icon { width: 40px; height: 40px; border-radius: 50%; border: 2px solid #00bcd4; object-fit: cover; box-shadow: 0 2px 5px rgba(0,0,0,0.1); cursor: pointer; }
     #post-form textarea { width: 100%; box-sizing: border-box; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 8px; resize: none; font-size: 1em; }
-    .post { border-bottom: 1px solid #eee; padding: 15px 0; }
+    .post { border-bottom: 1px solid #eee; padding: 15px 0; transition: background 0.2s; }
     .reply-post { margin-left: 50px; border-left: 4px solid #00bcd4; padding: 10px 15px; background: #f9fdfd; margin-top: -1px; border-bottom: 1px solid #eee; }
     .post-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
     .post img.user-icon { width: 45px; height: 45px; border-radius: 50%; border: 1px solid #ddd; }
@@ -42,6 +42,22 @@
     .custom-file-btn { display: inline-block; padding: 8px 16px; cursor: pointer; background: #fff; border: 2px solid #00bcd4; border-radius: 20px; color: #00bcd4; font-weight: bold; font-size: 0.8em; transition: 0.2s; }
     .refresh-btn { background: #fff; border: 1px solid #00bcd4; color: #00bcd4; padding: 5px 10px; border-radius: 15px; cursor: pointer; font-size: 0.8em; font-weight: bold; transition: 0.2s; }
     .refresh-btn:hover { background: #00bcd4; color: #fff; }
+    
+    /* 規制・ワンクッション用スタイル (porn規制・閲覧注意・ネタバレ) */
+    .content-cover { text-align: center; padding: 20px 15px; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px; max-width: 80%; display: flex; flex-direction: column; gap: 5px; justify-content: center; align-items: center; transition: 0.2s; }
+    .r18-cover { background: #1a000a; color: #ff4081; border: 2px dashed #ff4081; }
+    .r18-cover:hover { background: #330015; transform: scale(0.99); }
+    .sensitive-cover { background: #332200; color: #ffb300; border: 2px dashed #ffb300; }
+    .sensitive-cover:hover { background: #4d3300; transform: scale(0.99); }
+    .spoiler-cover { background: #1e1e24; color: #80d8ff; border: 2px dashed #80d8ff; }
+    .spoiler-cover:hover { background: #2a2a35; transform: scale(0.99); }
+
+    /* 追加機能: 強調ハイライト表示スタイル */
+    .post-highlight { background: #fffde7 !important; border-left: 4px solid #ffd600; padding-left: 10px; }
+
+    /* オプション選択ドロップダウン */
+    .opt-select { padding: 6px 12px; border-radius: 15px; border: 1px solid #00bcd4; font-size: 0.8em; outline: none; background: #fff; color: #333; font-weight: bold; cursor: pointer; }
+
     #login-overlay, #icon-overlay, #dm-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9999; justify-content: center; align-items: center; }
     .login-container, .icon-container, .dm-container { width: 400px; background: #fff; padding: 25px; border-radius: 12px; position: relative; max-height: 90vh; overflow-y: auto; }
     .dynamic-login-title { font-size: 1.2em; text-align: center; font-weight: bold; margin-bottom: 15px; }
@@ -59,27 +75,17 @@
 </head>
 <body>
 
-<!-- トップバー -->
 <div class="top-bar">
-  <!-- 1番左：戻るボタン -->
   <a href="/full" style="padding:4px 10px; background:#fff; border:2px solid #aaa; border-radius:10px; color:#666; font-size:0.8em; font-weight:bold; text-decoration:none;">← 戻る</a>
-  
   <button class="ds-btn" id="ds-toggle-btn" onclick="toggleDS()">🎮 3DSモード</button>
   <span style="font-size:0.8em; color:#888;" id="ds-status"></span>
-  
-  <!-- スレッド（ジャンル）エリア：初期状態は空 -->
   <div class="thread-tabs" id="thread-tabs-container"></div>
-  
-  <!-- ログイン時のみ表示されるスレッド作成ボタン -->
   <button id="create-thread-btn" class="create-thread-btn" onclick="createThread()" style="display: none;">➕ スレ作成</button>
-
-  <!-- 検索バー -->
   <div class="search-box">
     <input type="text" id="post-search" placeholder="🔍 投稿を検索..." oninput="filterPosts()">
   </div>
 </div>
 
-<!-- ログイン / 新規登録 モーダル -->
 <div id="login-overlay" style="display:none;">
   <div class="login-container">
     <span style="position:absolute; top:10px; right:15px; cursor:pointer; font-size:1.5em;" onclick="closeModal()">×</span>
@@ -88,18 +94,13 @@
       <div id="mt-reg" style="flex:1; text-align:center; padding:8px; cursor:pointer; font-weight:bold; color:#00bcd4;" onclick="swM('register')">初めて</div>
       <div id="mt-log" style="flex:1; text-align:center; padding:8px; cursor:pointer; font-weight:bold; color:#888;" onclick="swM('login')">登録済み</div>
     </div>
-    
     <input type="text" id="login-username" placeholder="名前を入力" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; margin-bottom:10px;">
-    
     <div id="mi-sect">
       <input type="password" id="login-password" placeholder="パスワードを設定" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; margin-bottom:10px;">
-      
       <label class="custom-file-btn">
         <input type="file" id="login-icon-file" accept="image/*" onchange="upName(this,'mn-icon')">アイコン選択 (画像全般)
       </label>
       <span id="mn-icon" style="font-size:0.7em; color:#888; margin-left:5px;"></span>
-
-      <!-- 利用規約エリア：初期表示は完全にまっさら -->
       <div style="margin-top:12px;">
         <span style="font-size:0.8em; font-weight:bold; color:#555;">📜 利用規約</span>
         <div class="terms-box" id="terms-box" onscroll="checkTermsScroll(this)"></div>
@@ -109,13 +110,11 @@
         </div>
       </div>
     </div>
-
     <p id="login-err" style="color:red; font-size:0.85em; min-height:1.2em; margin-top:8px;"></p>
     <button onclick="doLogin()" style="width:100%; padding:12px; background:#00bcd4; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; margin-top:5px;">入室する</button>
   </div>
 </div>
 
-<!-- アイコン変更モーダル -->
 <div id="icon-overlay" style="display:none;">
   <div class="icon-container" style="text-align:center;">
     <span style="position:absolute; top:10px; right:15px; cursor:pointer; font-size:1.5em;" onclick="closeIconModal()">×</span>
@@ -123,7 +122,7 @@
     <img id="icon-preview" src="" style="width:80px; height:80px; border-radius:50%; border:3px solid #00bcd4; object-fit:cover; margin-bottom:15px;">
     <div>
       <label class="custom-file-btn">
-        <input type="file" id="icon-change-file" accept="image/*" onchange="previewIcon(this)">新しいアイコンを選ぶ (画像全般)
+        <input type="file" id="icon-change-file" accept="image/*" onchange="previewIcon(this)">新しいアイコンを選ぶ
       </label>
     </div>
     <p id="icon-err" style="color:red; font-size:0.85em; min-height:1.2em; margin-top:8px;"></p>
@@ -131,7 +130,6 @@
   </div>
 </div>
 
-<!-- DM モーダル -->
 <div id="dm-modal" style="display:none;">
   <div class="dm-container">
     <span style="position:absolute; top:10px; right:15px; cursor:pointer; font-size:1.5em;" onclick="closeDM()">×</span>
@@ -145,13 +143,13 @@
 </div>
 
 <div class="app-wrapper">
-  <!-- 左カラム：Gallery -->
+  <!-- 左カラム：投稿済み添付ファイル専用ギャラリー -->
   <div class="column col-left">
     <strong style="border-bottom: 2px solid #00bcd4; display:block; padding-bottom:5px;">🎨 Gallery</strong>
     <div id="media-gallery" style="margin-top:15px;"></div>
   </div>
 
-  <!-- 中央カラム：投稿 -->
+  <!-- 中央カラム -->
   <div class="column col-center">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
       <div style="display:flex; align-items:center; gap:15px;">
@@ -169,6 +167,7 @@
       </div>
     </div>
 
+    <!-- 投稿フォーム (オプション機能拡張版) -->
     <form id="post-form" onsubmit="return submitPost(event)">
       <input type="hidden" name="action_type" value="post">
       <input type="hidden" name="sid" id="sid-input" value="{{ sid }}">
@@ -176,11 +175,26 @@
       <input type="hidden" name="thread" id="post-thread-input" value="">
       <div id="rep-box" style="display:none; color:#00bcd4; font-size:0.8em; margin-bottom:5px; font-weight:bold; cursor:pointer;" onclick="cancelR()"></div>
       <textarea name="message" rows="2" placeholder="メッセージを投稿..."></textarea>
-      <div style="display:flex; align-items: center; margin-top:10px;">
+      
+      <div style="display:flex; align-items: center; gap:10px; flex-wrap:wrap; margin-top:10px;">
         <label class="custom-file-btn" style="border-color:#ccc; color:#666;">
           <input type="file" name="post_file" id="post-file-input" onchange="upName(this, 'n-post')">ファイルを添付
         </label>
-        <span id="n-post" style="font-size:0.7em; color:#888; margin-left:10px;"></span>
+        <span id="n-post" style="font-size:0.7em; color:#888;"></span>
+        
+        <!-- 投稿オプション1: ポルノ・コンテンツ規制設定 -->
+        <select name="content_restriction" id="content-restriction" class="opt-select">
+          <option value="none">🌐 通常投稿</option>
+          <option value="r18">🔞 R18 (ポルノ/18禁規制)</option>
+          <option value="sensitive">⚠️ 閲覧注意 (ショッキング)</option>
+          <option value="spoiler">🙈 ネタバレ注意</option>
+        </select>
+
+        <!-- 投稿オプション2: 追加機能 (ハイライト表示) -->
+        <label style="font-size:0.8em; font-weight:bold; color:#555; cursor:pointer; display:flex; align-items:center; gap:3px;">
+          <input type="checkbox" name="is_highlight" value="true"> 💡 強調表示
+        </label>
+
         <button type="submit" id="submit-btn" style="margin-left:auto; width:100px; padding:10px; background:#00bcd4; color:#fff; border:none; border-radius:6px; font-weight:bold;">投稿</button>
       </div>
     </form>
@@ -201,11 +215,6 @@
   </div>
 </div>
 
-<div id="hidden-list" class="hidden-user-list">
-  <div style="border-bottom: 1px solid #0f0; margin-bottom:10px;">>> SYS_USER_LIST</div>
-  {% for n in registered_users %}<div>{{ n }}</div>{% endfor %}
-</div>
-
 <script>
   var SID = "{{ sid or '' }}";
   var CURRENT_USER = "{{ username }}";
@@ -215,20 +224,13 @@
   var currentThread = '';
   var activeDMTarget = '';
 
-  // --- UI表示制御 ---
   function updateUIVisibility() {
     var isLoggedIn = (SID && SID !== "None" && SID !== "");
     var createBtn = document.getElementById('create-thread-btn');
-    if (createBtn) {
-      createBtn.style.display = isLoggedIn ? 'inline-block' : 'none';
-    }
+    if (createBtn) createBtn.style.display = isLoggedIn ? 'inline-block' : 'none';
   }
 
-  // --- スレッド管理 ---
-  function getCustomThreads() {
-    try { return JSON.parse(localStorage.getItem('custom_threads') || '[]'); } catch(e) { return []; }
-  }
-
+  function getCustomThreads() { try { return JSON.parse(localStorage.getItem('custom_threads') || '[]'); } catch(e) { return []; } }
   function renderThreadTabs() {
     var container = document.getElementById('thread-tabs-container');
     var threads = getCustomThreads();
@@ -241,59 +243,33 @@
   }
 
   function createThread() {
-    if (!checkLog()) return; // 念のためのチェック
-    var name = prompt("新しいスレッド（ジャンル）名を入力してください:");
+    if (!checkLog()) return;
+    var name = prompt("新しいスレッド名を入力してください:");
     if (!name) return;
     name = name.trim();
     if (!name) return;
-    
     var threads = getCustomThreads();
-    if (threads.indexOf(name) !== -1) {
-      alert("そのスレッドは既に存在します。");
-      return;
-    }
+    if (threads.indexOf(name) !== -1) { alert("既に存在します。"); return; }
     threads.push(name);
     try { localStorage.setItem('custom_threads', JSON.stringify(threads)); } catch(e) {}
-    
     currentThread = name;
     document.getElementById('post-thread-input').value = currentThread;
-    renderThreadTabs();
-    filterPosts();
+    renderThreadTabs(); filterPosts();
   }
 
   function switchThread(thread, btn) {
-    if (currentThread === thread) {
-      currentThread = '';
-    } else {
-      currentThread = thread;
-    }
+    currentThread = (currentThread === thread) ? '' : thread;
     document.getElementById('post-thread-input').value = currentThread;
-    renderThreadTabs();
-    filterPosts();
+    renderThreadTabs(); filterPosts();
   }
 
-  // --- 規約読み込み ---
   function loadTerms() {
     var termsBox = document.getElementById('terms-box');
     termsBox.innerText = '';
-    fetch('kiyak.txt')
-      .then(function(res) {
-        if (!res.ok) throw new Error('Not found');
-        return res.text();
-      })
-      .then(function(text) {
-        termsBox.innerText = text;
-      })
-      .catch(function() {
-        termsBox.innerText = '';
-      });
+    fetch('kiyak.txt').then(function(res) { if (!res.ok) throw new Error(); return res.text(); })
+      .then(function(text) { termsBox.innerText = text; }).catch(function() {});
   }
-
-  function checkTermsScroll(el) {
-    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 5) {
-      document.getElementById('terms-check').disabled = false;
-    }
-  }
+  function checkTermsScroll(el) { if (el.scrollTop + el.clientHeight >= el.scrollHeight - 5) document.getElementById('terms-check').disabled = false; }
 
   function filterPosts() {
     var query = document.getElementById('post-search').value.toLowerCase();
@@ -307,536 +283,316 @@
     });
   }
 
-  // --- 通報機能 ---
-  function getReportedPosts() {
-    try { return JSON.parse(localStorage.getItem('reported_posts') || '{}'); } catch(e) { return {}; }
-  }
-
+  function getReportedPosts() { try { return JSON.parse(localStorage.getItem('reported_posts') || '{}'); } catch(e) { return {}; } }
   function reportPost(postId, isApproved) {
-    if (isApproved) {
-      alert("この投稿は管理者認証済み(is_approved: true)のため通報されても隠蔽されません。");
-      return;
-    }
+    if (isApproved) { alert("この投稿は管理者認証済みのため隠蔽されません。"); return; }
     var reason = prompt("通報理由を入力してください:");
     if (!reason) return;
     var reported = getReportedPosts();
     reported[postId] = { reason: reason, time: new Date().toISOString() };
     try { localStorage.setItem('reported_posts', JSON.stringify(reported)); } catch(e) {}
-    alert("通報を受理しました。管理者の認証を受けるまで本文は一時隠蔽されます。");
-    load();
+    alert("通報を受理しました。管理者の認証を受けるまで本文は一時隠蔽されます。"); load();
   }
 
-  // --- DM機能 ---
   function openDM(targetUser) {
     if (!checkLog()) return;
     if (targetUser === CURRENT_USER) { alert("自分にはDMを送れません。"); return; }
-    activeDMTarget = targetUser;
-    document.getElementById('dm-target-user').innerText = targetUser;
-    renderDMLog();
-    document.getElementById('dm-modal').style.display = 'flex';
+    activeDMTarget = targetUser; document.getElementById('dm-target-user').innerText = targetUser;
+    renderDMLog(); document.getElementById('dm-modal').style.display = 'flex';
   }
-
   function closeDM() { document.getElementById('dm-modal').style.display = 'none'; }
-
-  function getDMs() {
-    try { return JSON.parse(localStorage.getItem('dm_logs') || '{}'); } catch(e) { return {}; }
-  }
-
+  function getDMs() { try { return JSON.parse(localStorage.getItem('dm_logs') || '{}'); } catch(e) { return {}; } }
   function renderDMLog() {
-    var dms = getDMs();
-    var pairKey = [CURRENT_USER, activeDMTarget].sort().join('::');
-    var logs = dms[pairKey] || [];
-    var logDiv = document.getElementById('dm-chat-log');
-    logDiv.innerHTML = '';
+    var dms = getDMs(); var pairKey = [CURRENT_USER, activeDMTarget].sort().join('::'); var logs = dms[pairKey] || [];
+    var logDiv = document.getElementById('dm-chat-log'); logDiv.innerHTML = '';
     logs.forEach(function(msg) {
       var p = document.createElement('div');
       p.style.cssText = "margin-bottom:8px; text-align:" + (msg.sender === CURRENT_USER ? "right" : "left") + ";";
-      p.innerHTML = '<span style="font-size:0.7em; color:#888;">' + msg.sender + '</span><br>' +
-        '<span style="display:inline-block; padding:6px 12px; border-radius:10px; font-size:0.85em; background:' + (msg.sender === CURRENT_USER ? '#00bcd4; color:#fff;' : '#e0e0e0; color:#333;') + '">' + msg.text + '</span>';
+      p.innerHTML = '<span style="font-size:0.7em; color:#888;">' + msg.sender + '</span><br><span style="display:inline-block; padding:6px 12px; border-radius:10px; font-size:0.85em; background:' + (msg.sender === CURRENT_USER ? '#00bcd4; color:#fff;' : '#e0e0e0; color:#333;') + '">' + msg.text + '</span>';
       logDiv.appendChild(p);
     });
     logDiv.scrollTop = logDiv.scrollHeight;
   }
-
   function sendDM() {
-    var inp = document.getElementById('dm-input');
-    var text = inp.value.trim();
-    if (!text) return;
-    var dms = getDMs();
-    var pairKey = [CURRENT_USER, activeDMTarget].sort().join('::');
+    var inp = document.getElementById('dm-input'); var text = inp.value.trim(); if (!text) return;
+    var dms = getDMs(); var pairKey = [CURRENT_USER, activeDMTarget].sort().join('::');
     if (!dms[pairKey]) dms[pairKey] = [];
     dms[pairKey].push({ sender: CURRENT_USER, text: text, time: new Date().toISOString() });
     try { localStorage.setItem('dm_logs', JSON.stringify(dms)); } catch(e) {}
-    inp.value = '';
-    renderDMLog();
+    inp.value = ''; renderDMLog();
   }
 
-  // --- モーダル制御 ---
   function toggleDS() {
-    _dsMode = !_dsMode;
-    var btn = document.getElementById('ds-toggle-btn');
-    var status = document.getElementById('ds-status');
-    if (_dsMode) {
-      document.body.className = 'ds-mode';
-      btn.className = 'ds-btn active';
-      status.textContent = '3DSモード ON';
-    } else {
-      document.body.className = '';
-      btn.className = 'ds-btn';
-      status.textContent = '';
-    }
+    _dsMode = !_dsMode; var btn = document.getElementById('ds-toggle-btn'); var status = document.getElementById('ds-status');
+    if (_dsMode) { document.body.className = 'ds-mode'; btn.className = 'ds-btn active'; status.textContent = '3DSモード ON'; } 
+    else { document.body.className = ''; btn.className = 'ds-btn'; status.textContent = ''; }
   }
 
-  function openModal() {
-    swM('register');
-    loadTerms();
-    document.getElementById('login-overlay').style.display = 'flex';
-  }
+  function openModal() { swM('register'); loadTerms(); document.getElementById('login-overlay').style.display = 'flex'; }
   function closeModal() { document.getElementById('login-overlay').style.display = 'none'; }
-  function checkLog() { 
-    if(!SID || SID === "None" || SID === "") { 
-      openModal(); 
-      return false; 
-    } 
-    return true; 
-  }
+  function checkLog() { if(!SID || SID === "None" || SID === "") { openModal(); return false; } return true; }
 
   function openIconModal() {
     if (!checkLog()) return;
-    var img = document.getElementById('icon-preview');
     var currentIcon = document.querySelector('.current-user-icon');
-    img.src = currentIcon ? currentIcon.src : '/static/icons/default.png';
-    document.getElementById('icon-err').textContent = '';
-    document.getElementById('icon-overlay').style.display = 'flex';
+    document.getElementById('icon-preview').src = currentIcon ? currentIcon.src : '/static/icons/default.png';
+    document.getElementById('icon-err').textContent = ''; document.getElementById('icon-overlay').style.display = 'flex';
   }
   function closeIconModal() { document.getElementById('icon-overlay').style.display = 'none'; }
-  function previewIcon(input) {
-    if (input.files && input.files[0]) {
-      var reader = new FileReader();
-      reader.onload = function(e) {
-        document.getElementById('icon-preview').src = e.target.result;
-      };
-      reader.readAsDataURL(input.files[0]);
-    }
-  }
-
+  function previewIcon(input) { if (input.files && input.files[0]) { var reader = new FileReader(); reader.onload = function(e) { document.getElementById('icon-preview').src = e.target.result; }; reader.readAsDataURL(input.files[0]); } }
   function doChangeIcon() {
-    var file = document.getElementById('icon-change-file').files[0];
-    var errEl = document.getElementById('icon-err');
+    var file = document.getElementById('icon-change-file').files[0]; var errEl = document.getElementById('icon-err');
     if (!file) { errEl.textContent = 'ファイルを選んでください'; return; }
-    var fd = new FormData();
-    fd.append('action_type', 'change_icon');
-    fd.append('sid', SID);
-    fd.append('icon', file);
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', '/classroom', true);
+    var fd = new FormData(); fd.append('action_type', 'change_icon'); fd.append('sid', SID); fd.append('icon', file);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/classroom', true);
     xhr.onload = function() {
       try {
         var data = JSON.parse(xhr.responseText);
         if (data.status === 'ok') {
           var imgs = document.querySelectorAll('.current-user-icon');
-          for (var i = 0; i < imgs.length; i++) {
-            imgs[i].src = '/static/icons/' + data.icon + '?t=' + Date.now();
-          }
-          closeIconModal();
-          load();
-        } else {
-          errEl.textContent = 'エラー: ' + (data.error || '失敗しました');
-        }
+          for (var i = 0; i < imgs.length; i++) imgs[i].src = '/static/icons/' + data.icon + '?t=' + Date.now();
+          closeIconModal(); load();
+        } else errEl.textContent = 'エラー: ' + (data.error || '失敗しました');
       } catch(e) { errEl.textContent = '通信エラー'; }
-    };
-    xhr.send(fd);
+    }; xhr.send(fd);
   }
 
   function swM(m) {
-    _curMode = m;
-    var isR = (m === 'register');
+    _curMode = m; var isR = (m === 'register');
     document.getElementById('mi-sect').style.display = isR ? 'block' : 'none';
     document.getElementById('mt-reg').style.color = isR ? '#00bcd4' : '#888';
     document.getElementById('mt-log').style.color = isR ? '#888' : '#00bcd4';
     document.getElementById('dynamic-title').innerText = isR ? "新規登録" : "ログイン";
   }
 
-  function upName(input, targetId) { 
-    document.getElementById(targetId).innerText = input.files.length > 0 ? input.files[0].name : ""; 
-  }
-
-  function cancelR() { 
-    document.getElementById("rep-input").value = ""; 
-    document.getElementById("rep-box").style.display = "none"; 
-  }
+  function upName(input, targetId) { document.getElementById(targetId).innerText = input.files.length > 0 ? input.files[0].name : ""; }
+  function cancelR() { document.getElementById("rep-input").value = ""; document.getElementById("rep-box").style.display = "none"; }
 
   function doLogin() {
-    var name = document.getElementById('login-username').value.trim();
-    var errEl = document.getElementById('login-err');
-    errEl.textContent = "";
+    var name = document.getElementById('login-username').value.trim(); var errEl = document.getElementById('login-err'); errEl.textContent = "";
     if (!name) { errEl.textContent = "名前を入力してください"; return; }
-
-    var fd = new FormData();
-    fd.append("action_type", _curMode);
-    fd.append("mode", _curMode);
-    fd.append("username", name);
-
+    var fd = new FormData(); fd.append("action_type", _curMode); fd.append("mode", _curMode); fd.append("username", name);
     if (_curMode === "register") {
-      var pass = document.getElementById('login-password').value.trim();
-      var iconFile = document.getElementById('login-icon-file').files[0];
-      var agreed = document.getElementById('terms-check').checked;
-
+      var pass = document.getElementById('login-password').value.trim(); var iconFile = document.getElementById('login-icon-file').files[0]; var agreed = document.getElementById('terms-check').checked;
       if (!pass) { errEl.textContent = "パスワードを設定してください"; return; }
       if (!iconFile) { errEl.textContent = "アイコン画像を選んでください"; return; }
       if (!agreed) { errEl.textContent = "利用規約を最後まで読み、同意してください"; return; }
-
-      fd.append("password", pass);
-      fd.append("icon", iconFile);
+      fd.append("password", pass); fd.append("icon", iconFile);
     }
-
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', '/classroom', true);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/classroom', true);
     xhr.onload = function() {
       try {
         var data = JSON.parse(xhr.responseText);
         if (data.status === "ok") {
-          SID = data.sid;
-          CURRENT_USER = name;
-          document.getElementById('sid-input').value = SID;
-          document.getElementById('disp-username').textContent = name;
+          SID = data.sid; CURRENT_USER = name;
+          document.getElementById('sid-input').value = SID; document.getElementById('disp-username').textContent = name;
           if (history.replaceState) history.replaceState({}, "", "/classroom?sid=" + SID);
-          document.getElementById('login-btn-area').innerHTML =
-            '<img src="/static/icons/' + (data.icon || 'default.png') + '" class="current-user-icon" title="' + name + ' (クリックでアイコン変更)" onclick="openIconModal()" onerror="this.src=\'/static/icons/default.png\'">';
-          closeModal();
-          load();
-        } else {
-          errEl.textContent = "エラー: " + (data.error || "失敗しました");
-        }
+          document.getElementById('login-btn-area').innerHTML = '<img src="/static/icons/' + (data.icon || 'default.png') + '" class="current-user-icon" title="' + name + ' (クリックでアイコン変更)" onclick="openIconModal()" onerror="this.src=\'/static/icons/default.png\'">';
+          closeModal(); load();
+        } else errEl.textContent = "エラー: " + (data.error || "失敗しました");
       } catch(e) { errEl.textContent = "通信エラーが発生しました"; }
-    };
-    xhr.onerror = function() { errEl.textContent = "通信エラーが発生しました"; };
-    xhr.send(fd);
+    }; xhr.send(fd);
   }
 
   function formatJST(timeStr) {
-    if (!timeStr) return '';
-    const [monthDay, time] = timeStr.split(' ');
-    if (!monthDay || !time) return timeStr;
-    const [month, day] = monthDay.split('/').map(Number);
-    const [hour, min] = time.split(':').map(Number);
-    const now = new Date();
-    const year = now.getFullYear();
-    let date = new Date(year, month - 1, day, hour, min);
-    date.setHours(date.getHours() + 9);
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    const h = String(date.getHours()).padStart(2, '0');
-    const mi = String(date.getMinutes()).padStart(2, '0');
-    return `${m}/${d} ${h}:${mi}`;
+    if (!timeStr) return ''; const [monthDay, time] = timeStr.split(' '); if (!monthDay || !time) return timeStr;
+    const [month, day] = monthDay.split('/').map(Number); const [hour, min] = time.split(':').map(Number);
+    let date = new Date(new Date().getFullYear(), month - 1, day, hour, min); date.setHours(date.getHours() + 9);
+    return `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
   }
 
   function submitPost(e) {
-    e.preventDefault();
-    if (!checkLog() || isPosting) return false;
-
-    isPosting = true;
-    const submitBtn = document.getElementById('submit-btn');
-    const originalText = submitBtn.textContent;
-    submitBtn.disabled = true;
-    submitBtn.textContent = "投稿中...";
-
-    var form = document.getElementById('post-form');
-    var fd = new FormData(form);
-    fd.set('sid', SID);
-
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', '/classroom', true);
+    e.preventDefault(); if (!checkLog() || isPosting) return false;
+    isPosting = true; const submitBtn = document.getElementById('submit-btn'); const originalText = submitBtn.textContent;
+    submitBtn.disabled = true; submitBtn.textContent = "投稿中...";
+    var form = document.getElementById('post-form'); var fd = new FormData(form); fd.set('sid', SID);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/classroom', true);
     xhr.onload = function() {
-      isPosting = false;
-      submitBtn.disabled = false;
-      submitBtn.textContent = originalText;
+      isPosting = false; submitBtn.disabled = false; submitBtn.textContent = originalText;
       if (xhr.status === 200) {
-        form.reset();
-        document.getElementById('n-post').textContent = '';
-        cancelR();
-        load();
-      } else {
-        alert("エラーが発生しました: " + xhr.status);
-      }
+        form.reset(); document.getElementById('n-post').textContent = ''; cancelR(); load();
+      } else alert("エラーが発生しました: " + xhr.status);
     };
-    xhr.onerror = function() {
-      isPosting = false;
-      submitBtn.disabled = false;
-      submitBtn.textContent = originalText;
-      alert('通信エラー');
-    };
-    xhr.send(fd);
-    return false;
+    xhr.onerror = function() { isPosting = false; submitBtn.disabled = false; submitBtn.textContent = originalText; alert('通信エラー'); };
+    xhr.send(fd); return false;
   }
 
   function getYT(t) {
     if (!t || typeof t !== 'string') return "";
-    var r = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-    var m = t.match(r);
+    var m = t.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
     return m ? '<div class="yt-container"><iframe src="https://www.youtube.com/embed/' + m[1] + '" allowfullscreen></iframe></div>' : "";
   }
 
   function delP(id) {
     if(!confirm("この投稿を削除しますか？")) return;
-    var fd = new FormData();
-    fd.append("action_type", "delete");
-    fd.append("sid", SID);
-    fd.append("post_id", id);
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', '/classroom', true);
-    xhr.onload = function() { load(); };
-    xhr.send(fd);
+    var fd = new FormData(); fd.append("action_type", "delete"); fd.append("sid", SID); fd.append("post_id", id);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/classroom', true); xhr.onload = function() { load(); }; xhr.send(fd);
   }
 
   function doL(id) {
     if(!checkLog()) return;
-    var l;
-    try { l = JSON.parse(localStorage.getItem('lk') || '[]'); } catch(e) { l = []; }
+    var l; try { l = JSON.parse(localStorage.getItem('lk') || '[]'); } catch(e) { l = []; }
     var a = (l.indexOf(id) >= 0) ? "minus" : "plus";
     if (a === "plus") l.push(id); else { var nl = []; for(var i=0;i<l.length;i++) if(l[i]!==id) nl.push(l[i]); l=nl; }
     try { localStorage.setItem('lk', JSON.stringify(l)); } catch(e) {}
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', '/like', true);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.onload = function() { load(); };
-    xhr.send(JSON.stringify({id: id, action: a}));
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/like', true); xhr.setRequestHeader('Content-Type', 'application/json'); xhr.onload = function() { load(); }; xhr.send(JSON.stringify({id: id, action: a}));
   }
 
   function setR(id, u) {
-    if(!checkLog()) return;
-    document.getElementById("rep-input").value = id;
-    var rb = document.getElementById("rep-box");
-    rb.innerText = "↪ " + u + " への返信を解除する (クリック)";
-    rb.style.display = "block";
-    var cc = document.querySelector('.col-center');
-    if (cc && cc.scrollTo) cc.scrollTo({ top: 0, behavior: 'smooth' });
-    else if (cc) cc.scrollTop = 0;
+    if(!checkLog()) return; document.getElementById("rep-input").value = id;
+    var rb = document.getElementById("rep-box"); rb.innerText = "↪ " + u + " への返信を解除する (クリック)"; rb.style.display = "block";
+    var cc = document.querySelector('.col-center'); if (cc && cc.scrollTo) cc.scrollTo({ top: 0, behavior: 'smooth' }); else if (cc) cc.scrollTop = 0;
   }
 
   function fixPortrait(el) {
-    function apply() {
-      var nw = el.videoWidth || el.naturalWidth || 0;
-      var nh = el.videoHeight || el.naturalHeight || 0;
-      if (nw > 0 && nh > nw) {
-        el.style.width = '60%';
-        el.style.height = 'auto';
-      }
-    }
-    el.addEventListener('loadedmetadata', apply);
-    el.addEventListener('load', apply);
-    if (el.readyState >= 1 || el.complete) apply();
+    function apply() { var nw = el.videoWidth || el.naturalWidth || 0; var nh = el.videoHeight || el.naturalHeight || 0; if (nw > 0 && nh > nw) { el.style.width = '60%'; el.style.height = 'auto'; } }
+    el.addEventListener('loadedmetadata', apply); el.addEventListener('load', apply); if (el.readyState >= 1 || el.complete) apply();
   }
 
-  function fileIconSVG() {
-    return '<svg width="24" height="30" viewBox="0 0 24 30" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="1" width="18" height="26" rx="2" fill="white" stroke="#aaa" stroke-width="1.5"/><path d="M13 1v7h7" fill="none" stroke="#aaa" stroke-width="1.5"/><path d="M13 1l7 7" fill="none" stroke="#aaa" stroke-width="1.5"/><rect x="4" y="13" width="11" height="1.5" rx="1" fill="#ccc"/><rect x="4" y="17" width="8" height="1.5" rx="1" fill="#ccc"/><rect x="4" y="21" width="10" height="1.5" rx="1" fill="#ccc"/></svg>';
-  }
+  function fileIconSVG() { return '<svg width="24" height="30" viewBox="0 0 24 30" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="1" width="18" height="26" rx="2" fill="white" stroke="#aaa" stroke-width="1.5"/><path d="M13 1v7h7" fill="none" stroke="#aaa" stroke-width="1.5"/><path d="M13 1l7 7" fill="none" stroke="#aaa" stroke-width="1.5"/><rect x="4" y="13" width="11" height="1.5" rx="1" fill="#ccc"/><rect x="4" y="17" width="8" height="1.5" rx="1" fill="#ccc"/><rect x="4" y="21" width="10" height="1.5" rx="1" fill="#ccc"/></svg>'; }
 
   function appendGalleryItem(container, f, byLabel) {
-    var url = f.url || ('/static/uploads/' + f.save_name);
-    var ext = (f.ext || "").replace(".", "").toUpperCase();
-    var wrap = document.createElement('div');
-    wrap.style.cssText = "margin-bottom:12px; border:1px solid #eee; padding:8px; border-radius:8px; background:#fff; overflow:hidden;";
-    if (f.type === "image") {
-      var img = document.createElement('img');
-      img.src = url;
-      img.style.cssText = "width:100%; border-radius:5px; display:block;";
-      fixPortrait(img);
-      wrap.appendChild(img);
-    } else if (f.type === "video") {
-      var vid = document.createElement('video');
-      vid.controls = true;
-      vid.preload = "metadata";
-      vid.style.cssText = "width:100%; border-radius:5px; display:block; background:#000;";
-      vid.src = url;
-      fixPortrait(vid);
-      wrap.appendChild(vid);
-    } else if (f.type === "audio") {
-      var lbl = document.createElement('div');
-      lbl.style.cssText = "font-size:0.8em; color:#555; margin-bottom:6px;";
-      lbl.textContent = "🎵 ." + ext;
-      wrap.appendChild(lbl);
-      var aud = document.createElement('audio');
-      aud.controls = true;
-      aud.preload = "metadata";
-      aud.style.cssText = "width:100%; display:block;";
-      aud.src = url;
-      wrap.appendChild(aud);
-    } else {
-      var fileIcon = document.createElement('div');
-      fileIcon.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-top:4px;";
-      var fileRow = document.createElement('div');
-      fileRow.style.cssText = "display:inline-flex; align-items:center; gap:8px; padding:8px 12px; background:#f5f5f5; border:1px solid #ddd; border-radius:8px; font-size:0.85em; color:#444;";
-      fileRow.innerHTML = fileIconSVG() + '<span>' + f.save_name + '</span>';
-      var dlBtn = document.createElement('a');
-      dlBtn.href = url;
-      dlBtn.download = f.save_name;
-      dlBtn.textContent = '⬇ ダウンロード';
-      dlBtn.style.cssText = "display:inline-block; padding:5px 12px; background:#00bcd4; color:#fff; border-radius:6px; font-size:0.8em; font-weight:bold; text-decoration:none;";
-      fileIcon.appendChild(fileRow);
-      fileIcon.appendChild(dlBtn);
-      wrap.appendChild(fileIcon);
+    var url = f.url || ('/static/uploads/' + f.save_name); var ext = (f.ext || "").replace(".", "").toUpperCase();
+    var wrap = document.createElement('div'); wrap.style.cssText = "margin-bottom:12px; border:1px solid #eee; padding:8px; border-radius:8px; background:#fff; overflow:hidden;";
+    if (f.type === "image") { var img = document.createElement('img'); img.src = url; img.style.cssText = "width:100%; border-radius:5px; display:block;"; fixPortrait(img); wrap.appendChild(img); }
+    else if (f.type === "video") { var vid = document.createElement('video'); vid.controls = true; vid.preload = "metadata"; vid.style.cssText = "width:100%; border-radius:5px; display:block; background:#000;"; vid.src = url; fixPortrait(vid); wrap.appendChild(vid); }
+    else if (f.type === "audio") { var lbl = document.createElement('div'); lbl.style.cssText = "font-size:0.8em; color:#555; margin-bottom:6px;"; lbl.textContent = "🎵 ." + ext; wrap.appendChild(lbl); var aud = document.createElement('audio'); aud.controls = true; aud.preload = "metadata"; aud.style.cssText = "width:100%; display:block;"; aud.src = url; wrap.appendChild(aud); }
+    else {
+      var fileIcon = document.createElement('div'); fileIcon.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-top:4px;";
+      var fileRow = document.createElement('div'); fileRow.style.cssText = "display:inline-flex; align-items:center; gap:8px; padding:8px 12px; background:#f5f5f5; border:1px solid #ddd; border-radius:8px; font-size:0.85em; color:#444;"; fileRow.innerHTML = fileIconSVG() + '<span>' + f.save_name + '</span>';
+      var dlBtn = document.createElement('a'); dlBtn.href = url; dlBtn.download = f.save_name; dlBtn.textContent = '⬇ ダウンロード'; dlBtn.style.cssText = "display:inline-block; padding:5px 12px; background:#00bcd4; color:#fff; border-radius:6px; font-size:0.8em; font-weight:bold; text-decoration:none;";
+      fileIcon.appendChild(fileRow); fileIcon.appendChild(dlBtn); wrap.appendChild(fileIcon);
     }
-    var extLabel = document.createElement('div');
-    extLabel.style.cssText = "font-size:9px; color:#aaa; margin-top:3px;";
-    extLabel.textContent = '.' + ext;
-    wrap.appendChild(extLabel);
-    if (byLabel) {
-      var by = document.createElement('div');
-      by.style.cssText = "font-size:9px; color:#888; text-align:right; margin-top:4px;";
-      by.textContent = byLabel;
-      wrap.appendChild(by);
-    }
+    var extLabel = document.createElement('div'); extLabel.style.cssText = "font-size:9px; color:#aaa; margin-top:3px;"; extLabel.textContent = '.' + ext; wrap.appendChild(extLabel);
+    if (byLabel) { var by = document.createElement('div'); by.style.cssText = "font-size:9px; color:#888; text-align:right; margin-top:4px;"; by.textContent = byLabel; wrap.appendChild(by); }
     container.appendChild(wrap);
   }
 
   function renderPost(p, isRep, gDiv, lk) {
     if (!p) return document.createElement('div');
-    var wrap = document.createElement('div');
-    wrap.className = isRep ? 'reply-post' : 'post';
+    var wrap = document.createElement('div'); wrap.className = isRep ? 'reply-post' : 'post';
     if (p.thread) wrap.setAttribute('data-thread', p.thread);
     
-    var url = p.file ? ('/static/uploads/' + p.file.save_name) : null;
-    var ext = p.file ? (p.file.ext || "").replace(".", "").toUpperCase() : "";
+    // 追加機能: 強調ハイライトオプションが適用されている場合
+    if (p.is_highlight || p.is_highlight === "true") wrap.classList.add('post-highlight');
 
-    if (p.file && !isRep) {
+    var url = p.file ? ('/static/uploads/' + p.file.save_name) : null;
+    
+    // 規制フラグの判定 (r18 / sensitive / spoiler)
+    var restriction = p.content_restriction || (p.is_r18 === true || p.is_r18 === "true" || p.is_r18 === "on" ? "r18" : "none");
+
+    // 【要件適用】ギャラリーには「実際に投稿に添付されているファイル」かつ「R18指定のないメディア」のみを追加
+    if (p.file && !isRep && restriction !== "r18") {
       appendGalleryItem(gDiv, { save_name: p.file.save_name, type: p.file.type, ext: p.file.ext, url: url }, 'by ' + p.user);
     }
 
-    wrap.innerHTML = '<div class="post-header"><img src="/static/icons/' + (p.icon || 'default.png') + '" class="user-icon" onerror="this.src=\'/static/icons/default.png\'"><b>' + (p.user || 'Unknown') + '</b><span style="font-size:0.7em; color:#999; margin-left:auto;">' + formatJST(p.time) + '</span></div>';
-    var body = document.createElement('div');
-    body.style.paddingLeft = isRep ? '42px' : '55px';
+    var badge = restriction === "r18" ? ' <span style="color:#ff4081; font-size:0.75em; border:1px solid #ff4081; padding:1px 4px; border-radius:4px;">🔞 R18</span>'
+              : restriction === "sensitive" ? ' <span style="color:#ffb300; font-size:0.75em; border:1px solid #ffb300; padding:1px 4px; border-radius:4px;">⚠️ 閲覧注意</span>'
+              : restriction === "spoiler" ? ' <span style="color:#80d8ff; font-size:0.75em; border:1px solid #80d8ff; padding:1px 4px; border-radius:4px;">🙈 ネタバレ</span>' : '';
 
-    var reportedMap = getReportedPosts();
-    var isReported = reportedMap[p.id];
-    var isApproved = p.is_approved || false;
+    wrap.innerHTML = '<div class="post-header"><img src="/static/icons/' + (p.icon || 'default.png') + '" class="user-icon" onerror="this.src=\'/static/icons/default.png\'"><b>' + (p.user || 'Unknown') + '</b>' + badge + '<span style="font-size:0.7em; color:#999; margin-left:auto;">' + formatJST(p.time) + '</span></div>';
+    var body = document.createElement('div'); body.style.paddingLeft = isRep ? '42px' : '55px';
+
+    var reportedMap = getReportedPosts(); var isReported = reportedMap[p.id]; var isApproved = p.is_approved || false;
 
     if (isReported && !isApproved) {
-      var repMsg = document.createElement('div');
-      repMsg.className = 'reported-msg';
-      repMsg.innerText = '⚠️ この投稿は通報されたため、管理者の認証を受けるまで本文を一時隠蔽しています。';
-      body.appendChild(repMsg);
+      var repMsg = document.createElement('div'); repMsg.className = 'reported-msg'; repMsg.innerText = '⚠️ この投稿は通報されたため、管理者の認証を受けるまで本文を一時隠蔽しています。'; body.appendChild(repMsg);
     } else {
-      var msg = document.createElement('p');
-      msg.style.cssText = "margin:5px 0; line-height:1.5;";
-      msg.textContent = p.message || '';
-      body.appendChild(msg);
+      var msg = document.createElement('p'); msg.style.cssText = "margin:5px 0; line-height:1.5;"; msg.textContent = p.message || ''; body.appendChild(msg);
 
       var ytHtml = getYT(p.message);
-      if (ytHtml) {
-        var ytDiv = document.createElement('div');
-        ytDiv.innerHTML = ytHtml;
-        body.appendChild(ytDiv);
-      }
+      if (ytHtml) { var ytDiv = document.createElement('div'); ytDiv.innerHTML = ytHtml; body.appendChild(ytDiv); }
 
+      // ファイル表示処理 (ポルノ/閲覧注意/ネタバレ対応ワンクッション機能)
       if (p.file) {
-        if (p.file.type === "image") {
-          var img2 = document.createElement('img');
-          img2.src = url;
-          img2.className = "media-content";
-          fixPortrait(img2);
-          body.appendChild(img2);
-        } else if (p.file.type === "video") {
-          var vid2 = document.createElement('video');
-          vid2.controls = true;
-          vid2.preload = "metadata";
-          vid2.className = "media-content";
-          vid2.src = url;
-          fixPortrait(vid2);
-          body.appendChild(vid2);
-        } else if (p.file.type === "audio") {
-          var aud2 = document.createElement('audio');
-          aud2.controls = true;
-          aud2.preload = "metadata";
-          aud2.className = "media-content";
-          aud2.src = url;
-          body.appendChild(aud2);
+        var mediaWrapper = document.createElement('div');
+        mediaWrapper.style.marginTop = "10px";
+
+        var buildMedia = function() {
+          var m = document.createElement('div');
+          if (p.file.type === "image") {
+            var img2 = document.createElement('img'); img2.src = url; img2.className = "media-content"; fixPortrait(img2); m.appendChild(img2);
+          } else if (p.file.type === "video") {
+            var vid2 = document.createElement('video'); vid2.controls = true; vid2.preload = "metadata"; vid2.className = "media-content"; vid2.src = url; fixPortrait(vid2); m.appendChild(vid2);
+          } else if (p.file.type === "audio") {
+            var aud2 = document.createElement('audio'); aud2.controls = true; aud2.preload = "metadata"; aud2.className = "media-content"; aud2.src = url; m.appendChild(aud2);
+          } else {
+            var fileIcon2 = document.createElement('div'); fileIcon2.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-top:10px;";
+            var fileRow2 = document.createElement('div'); fileRow2.style.cssText = "display:inline-flex; align-items:center; gap:8px; padding:8px 12px; background:#f5f5f5; border:1px solid #ddd; border-radius:8px; font-size:0.85em; color:#444;";
+            fileRow2.innerHTML = fileIconSVG() + '<span>' + (p.file.original_name || p.file.save_name) + '</span>';
+            var dlBtn2 = document.createElement('a'); dlBtn2.href = url; dlBtn2.download = p.file.original_name || p.file.save_name; dlBtn2.textContent = '⬇ ダウンロード'; dlBtn2.style.cssText = "display:inline-block; padding:5px 12px; background:#00bcd4; color:#fff; border-radius:6px; font-size:0.8em; font-weight:bold; text-decoration:none;";
+            fileIcon2.appendChild(fileRow2); fileIcon2.appendChild(dlBtn2); m.appendChild(fileIcon2);
+          }
+          return m;
+        };
+
+        // オプションに応じた遮蔽ワンクッションカバーの生成
+        if (restriction === "r18") {
+          var cover = document.createElement('div'); cover.className = "content-cover r18-cover";
+          cover.innerHTML = '<span>🔞 R18指定 (ポルノ規制メディア)</span><span style="font-size:0.75em; color:#ccc;">クリックして表示</span>';
+          cover.onclick = function() { mediaWrapper.innerHTML = ''; mediaWrapper.appendChild(buildMedia()); };
+          mediaWrapper.appendChild(cover);
+        } else if (restriction === "sensitive") {
+          var cover = document.createElement('div'); cover.className = "content-cover sensitive-cover";
+          cover.innerHTML = '<span>⚠️ 閲覧注意メディア</span><span style="font-size:0.75em; color:#eee;">クリックして表示</span>';
+          cover.onclick = function() { mediaWrapper.innerHTML = ''; mediaWrapper.appendChild(buildMedia()); };
+          mediaWrapper.appendChild(cover);
+        } else if (restriction === "spoiler") {
+          var cover = document.createElement('div'); cover.className = "content-cover spoiler-cover";
+          cover.innerHTML = '<span>🙈 ネタバレ要素が含まれています</span><span style="font-size:0.75em; color:#ccc;">クリックして開く</span>';
+          cover.onclick = function() { mediaWrapper.innerHTML = ''; mediaWrapper.appendChild(buildMedia()); };
+          mediaWrapper.appendChild(cover);
         } else {
-          var fileIcon2 = document.createElement('div');
-          fileIcon2.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-top:10px;";
-          var fileRow2 = document.createElement('div');
-          fileRow2.style.cssText = "display:inline-flex; align-items:center; gap:8px; padding:8px 12px; background:#f5f5f5; border:1px solid #ddd; border-radius:8px; font-size:0.85em; color:#444;";
-          fileRow2.innerHTML = fileIconSVG() + '<span>' + (p.file.original_name || p.file.save_name) + '</span>';
-          var dlBtn2 = document.createElement('a');
-          dlBtn2.href = url;
-          dlBtn2.download = p.file.original_name || p.file.save_name;
-          dlBtn2.textContent = '⬇ ダウンロード';
-          dlBtn2.style.cssText = "display:inline-block; padding:5px 12px; background:#00bcd4; color:#fff; border-radius:6px; font-size:0.8em; font-weight:bold; text-decoration:none;";
-          fileIcon2.appendChild(fileRow2);
-          fileIcon2.appendChild(dlBtn2);
-          body.appendChild(fileIcon2);
+          mediaWrapper.appendChild(buildMedia());
         }
+        
+        body.appendChild(mediaWrapper);
       }
     }
 
     var liked = (lk.indexOf(p.id) >= 0);
-    var actions = document.createElement('div');
-    actions.style.cssText = "margin-top:10px; font-size:0.8em;";
+    var actions = document.createElement('div'); actions.style.cssText = "margin-top:10px; font-size:0.8em;";
     actions.innerHTML = '<span style="color:#00bcd4; cursor:pointer; font-weight:bold;" onclick="setR(\'' + p.id + '\',\'' + (p.user || '') + '\')">返信</span>'
       + '<span style="margin-left:15px; color:' + (liked ? '#ff4081' : '#ccc') + '; cursor:pointer; font-weight:bold;" onclick="doL(\'' + p.id + '\')">❤️ ' + (p.likes || 0) + '</span>'
       + '<span style="margin-left:15px; color:#ff9800; cursor:pointer; font-weight:bold;" onclick="reportPost(\'' + p.id + '\', ' + isApproved + ')">🚨 通報</span>'
       + (p.user === CURRENT_USER ? '<span style="margin-left:15px; color:#ff4081; cursor:pointer; font-weight:bold;" onclick="delP(\'' + p.id + '\')">削除</span>' : '');
-    body.appendChild(actions);
-    wrap.appendChild(body);
+    body.appendChild(actions); wrap.appendChild(body);
     return wrap;
   }
 
   function load() {
-    updateUIVisibility(); // ← ここでUI表示・非表示を切り替え
-    renderThreadTabs();
-    var xhr1 = new XMLHttpRequest();
-    xhr1.open('GET', '/classroom?get_type=json', true);
+    updateUIVisibility(); renderThreadTabs();
+    var xhr1 = new XMLHttpRequest(); xhr1.open('GET', '/classroom?get_type=json', true);
     xhr1.onload = function() {
-      var data;
-      try { data = JSON.parse(xhr1.responseText); } catch(e) { return; }
-      var xhr2 = new XMLHttpRequest();
-      xhr2.open('GET', '/api/files', true);
-      xhr2.onload = function() {
-        var filesData;
-        try { filesData = JSON.parse(xhr2.responseText); } catch(e) { filesData = {files:[]}; }
-        var lk;
-        try { lk = JSON.parse(localStorage.getItem('lk') || '[]'); } catch(e) { lk = []; }
-        var pDiv = document.getElementById("post-list");
-        var gDiv = document.getElementById("media-gallery");
-        var uCon = document.getElementById("user-container");
-        var hDiv = document.getElementById("hot-posts");
-        pDiv.innerHTML = ""; gDiv.innerHTML = ""; uCon.innerHTML = ""; hDiv.innerHTML = "";
+      var data; try { data = JSON.parse(xhr1.responseText); } catch(e) { return; }
+      var lk; try { lk = JSON.parse(localStorage.getItem('lk') || '[]'); } catch(e) { lk = []; }
+      var pDiv = document.getElementById("post-list"); var gDiv = document.getElementById("media-gallery"); var uCon = document.getElementById("user-container"); var hDiv = document.getElementById("hot-posts");
+      pDiv.innerHTML = ""; gDiv.innerHTML = ""; uCon.innerHTML = ""; hDiv.innerHTML = "";
 
-        var users = data.all.filter(function(u) { return u.type === "user"; });
-        for (var i = 0; i < users.length; i++) {
-          var u = users[i];
-          uCon.innerHTML += '<div class="user-card" onclick="openDM(\'' + (u.user || '') + '\')"><img src="/static/icons/' + (u.icon || 'default.png') + '" onerror="this.src=\'/static/icons/default.png\'"><span>' + (u.user || '') + '</span></div>';
-        }
+      var users = data.all.filter(function(u) { return u.type === "user"; });
+      for (var i = 0; i < users.length; i++) {
+        var u = users[i];
+        uCon.innerHTML += '<div class="user-card" onclick="openDM(\'' + (u.user || '') + '\')"><img src="/static/icons/' + (u.icon || 'default.png') + '" onerror="this.src=\'/static/icons/default.png\'"><span>' + (u.user || '') + '</span></div>';
+      }
 
-        var posts = data.all.filter(function(p) { return p.type !== "user"; });
-        var parents = posts.filter(function(p) { return !p.reply_to; });
-        var replies = posts.filter(function(p) { return p.reply_to; });
-        var postMediaNames = {};
-        var reversed = parents.slice().reverse();
+      var posts = data.all.filter(function(p) { return p.type !== "user"; });
+      var parents = posts.filter(function(p) { return !p.reply_to; }); var replies = posts.filter(function(p) { return p.reply_to; });
+      var reversed = parents.slice().reverse();
 
-        for (var i = 0; i < reversed.length; i++) {
-          var p = reversed[i];
-          pDiv.appendChild(renderPost(p, false, gDiv, lk));
-          if (p.file && !p.reply_to) postMediaNames[p.file.save_name] = true;
-          var reps = replies.filter(function(r) { return r.reply_to === p.id; });
-          for (var j = 0; j < reps.length; j++) pDiv.appendChild(renderPost(reps[j], true, gDiv, lk));
-        }
+      // 【要件適用】投稿ログをループしながら実際に「投稿されたファイルのみ」をギャラリーに表示
+      for (var i = 0; i < reversed.length; i++) {
+        var p = reversed[i];
+        pDiv.appendChild(renderPost(p, false, gDiv, lk));
+        var reps = replies.filter(function(r) { return r.reply_to === p.id; });
+        for (var j = 0; j < reps.length; j++) pDiv.appendChild(renderPost(reps[j], true, gDiv, lk));
+      }
 
-        var files = filesData.files || [];
-        for (var i = 0; i < files.length; i++) {
-          if (!postMediaNames[files[i].save_name]) appendGalleryItem(gDiv, files[i], null);
-        }
-
-        for (var i = 0; i < data.hot.length; i++) {
-          var hp = data.hot[i];
-          hDiv.innerHTML += '<div style="margin-bottom:12px; border-left:4px solid #ff4081; padding:8px 12px; background:rgba(255,64,129,0.03); border-radius:0 8px 8px 0;"><div style="font-weight:bold; font-size:0.9em;">' + (hp.user || '') + '</div><div style="font-size:0.8em; color:#555; margin:4px 0;">' + (hp.message || '').substring(0,40) + '...</div><div style="font-size:0.75em; color:#ff4081; font-weight:bold;">❤️ ' + (hp.likes || 0) + ' likes</div></div>';
-        }
-
-        filterPosts();
-      };
-      xhr2.send();
-    };
-    xhr1.send();
+      for (var i = 0; i < data.hot.length; i++) {
+        var hp = data.hot[i];
+        hDiv.innerHTML += '<div style="margin-bottom:12px; border-left:4px solid #ff4081; padding:8px 12px; background:rgba(255,64,129,0.03); border-radius:0 8px 8px 0;"><div style="font-weight:bold; font-size:0.9em;">' + (hp.user || '') + '</div><div style="font-size:0.8em; color:#555; margin:4px 0;">' + (hp.message || '').substring(0,40) + '...</div><div style="font-size:0.75em; color:#ff4081; font-weight:bold;">❤️ ' + (hp.likes || 0) + ' likes</div></div>';
+      }
+      filterPosts();
+    }; xhr1.send();
   }
 
   window.onload = load;
