@@ -77,9 +77,9 @@
     </div>
     <input type="text" id="login-username" placeholder="名前を入力" style="width:100%; padding:12px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box;">
     <div id="mi-sect" style="margin-top:15px;">
-      <label class="custom-file-btn">
-        <input type="file" id="login-icon-file" accept=".png" onchange="upName(this,'mn-icon')">アイコン選択 (.png)
-      </label>
+    <label class="custom-file-btn">
+      <input type="file" id="login-icon-file" accept="image/*" onchange="upName(this,'mn-icon')">アイコン選択
+    </label>
       <span id="mn-icon" style="font-size:0.7em; color:#888; margin-left:5px;"></span>
     </div>
     <p id="login-err" style="color:red; font-size:0.85em; min-height:1.2em; margin-top:8px;"></p>
