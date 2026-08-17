@@ -9,6 +9,8 @@
     .thread-tabs { display: flex; gap: 6px; overflow-x: auto; align-items: center; }
     .thread-tab { padding: 4px 12px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 12px; cursor: pointer; font-size: 0.8em; font-weight: bold; white-space: nowrap; transition: 0.2s; }
     .thread-tab.active { background: #00bcd4; color: #fff; border-color: #00bcd4; }
+    .create-thread-btn { padding: 4px 10px; background: #e0f7fa; border: 1px solid #00bcd4; border-radius: 12px; color: #00bcd4; font-size: 0.8em; font-weight: bold; cursor: pointer; transition: 0.2s; }
+    .create-thread-btn:hover { background: #00bcd4; color: #fff; }
     .search-box { display: flex; align-items: center; margin-left: auto; }
     .search-box input { padding: 5px 10px; border: 1px solid #ccc; border-radius: 15px; font-size: 0.8em; outline: none; width: 140px; }
     .app-wrapper { display: flex; width: 95vw; max-width: 1400px; height: calc(95vh - 50px); margin: 8px auto 0; gap: 15px; }
@@ -34,7 +36,6 @@
     .post img.user-icon { width: 45px; height: 45px; border-radius: 50%; border: 1px solid #ddd; }
     .reply-post img.user-icon { width: 32px; height: 32px; }
     .media-content { max-width: 80%; border-radius: 10px; margin-top: 10px; display: block; border: 1px solid #eee; object-fit: contain; }
-    .file-detail-desc { font-size: 10px; color: #444; margin-top: 5px; background: #f0f0f0; padding: 6px; border-radius: 4px; width: fit-content; font-weight: bold; border-left: 3px solid #00bcd4; }
     .yt-container { width: 80%; aspect-ratio: 16/9; margin-top: 10px; border-radius: 8px; overflow: hidden; }
     .yt-container iframe { width: 100%; height: 100%; border: none; }
     input[type="file"] { display: none; }
@@ -47,8 +48,6 @@
     .terms-box { border: 1px solid #ccc; height: 120px; overflow-y: scroll; padding: 10px; font-size: 0.75em; background: #fafafa; border-radius: 6px; margin-top: 10px; white-space: pre-wrap; }
     .terms-agree-area { margin-top: 8px; font-size: 0.8em; display: flex; align-items: center; gap: 5px; }
     .hidden-user-list { display: none; border: 2px solid #0f0; padding: 15px; background: #000; color: #0f0; font-family: monospace; position: fixed; bottom: 20px; left: 20px; z-index: 10000; max-height: 300px; overflow-y: auto; }
-    .debug-mode * { font-family: monospace !important; border-radius: 0 !important; }
-    .debug-mode body { background: #c0c0c0 !important; }
     body.ds-mode { background: #1a1a2e; overflow: auto; height: auto; display: block; }
     body.ds-mode .app-wrapper { display: block; width: 100%; max-width: 400px; margin: 0 auto; height: auto; }
     body.ds-mode .col-left, body.ds-mode .col-right { display: none; }
@@ -62,17 +61,17 @@
 
 <!-- トップバー -->
 <div class="top-bar">
-  <button class="ds-btn" id="ds-toggle-btn" onclick="toggleDS()">🎮 3DSモード</button>
-  <span style="font-size:0.8em; color:#888;" id="ds-status"></span>
+  <!-- 1番左：戻るボタン -->
   <a href="/full" style="padding:4px 10px; background:#fff; border:2px solid #aaa; border-radius:10px; color:#666; font-size:0.8em; font-weight:bold; text-decoration:none;">← 戻る</a>
   
-  <!-- スレッド（ジャンル）切り替えタブ -->
-  <div class="thread-tabs">
-    <div class="thread-tab active" onclick="switchThread('all', this)">🌐 全般</div>
-    <div class="thread-tab" onclick="switchThread('free', this)">💬 雑談</div>
-    <div class="thread-tab" onclick="switchThread('qa', this)">❓ 質問</div>
-    <div class="thread-tab" onclick="switchThread('media', this)">🎨 メディア</div>
-  </div>
+  <button class="ds-btn" id="ds-toggle-btn" onclick="toggleDS()">🎮 3DSモード</button>
+  <span style="font-size:0.8em; color:#888;" id="ds-status"></span>
+  
+  <!-- スレッド（ジャンル）エリア：初期状態は空 -->
+  <div class="thread-tabs" id="thread-tabs-container"></div>
+  
+  <!-- ログイン時のみ表示されるスレッド作成ボタン -->
+  <button id="create-thread-btn" class="create-thread-btn" onclick="createThread()" style="display: none;">➕ スレ作成</button>
 
   <!-- 検索バー -->
   <div class="search-box">
@@ -92,7 +91,6 @@
     
     <input type="text" id="login-username" placeholder="名前を入力" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; margin-bottom:10px;">
     
-    <!-- 新規作成時のみ表示する項目 -->
     <div id="mi-sect">
       <input type="password" id="login-password" placeholder="パスワードを設定" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; margin-bottom:10px;">
       
@@ -101,12 +99,10 @@
       </label>
       <span id="mn-icon" style="font-size:0.7em; color:#888; margin-left:5px;"></span>
 
-      <!-- 利用規約エリア -->
+      <!-- 利用規約エリア：初期表示は完全にまっさら -->
       <div style="margin-top:12px;">
-        <span style="font-size:0.8em; font-weight:bold; color:#555;">📜 利用規約 (一番下までスクロールして確認)</span>
-        <div class="terms-box" id="terms-box" onscroll="checkTermsScroll(this)">
-          規約を読み込み中...
-        </div>
+        <span style="font-size:0.8em; font-weight:bold; color:#555;">📜 利用規約</span>
+        <div class="terms-box" id="terms-box" onscroll="checkTermsScroll(this)"></div>
         <div class="terms-agree-area">
           <input type="checkbox" id="terms-check" disabled>
           <label for="terms-check">規約をすべて確認し同意しました</label>
@@ -177,6 +173,7 @@
       <input type="hidden" name="action_type" value="post">
       <input type="hidden" name="sid" id="sid-input" value="{{ sid }}">
       <input type="hidden" name="reply_to" id="rep-input">
+      <input type="hidden" name="thread" id="post-thread-input" value="">
       <div id="rep-box" style="display:none; color:#00bcd4; font-size:0.8em; margin-bottom:5px; font-weight:bold; cursor:pointer;" onclick="cancelR()"></div>
       <textarea name="message" rows="2" placeholder="メッセージを投稿..."></textarea>
       <div style="display:flex; align-items: center; margin-top:10px;">
@@ -215,21 +212,80 @@
   var _curMode = 'register';
   var _dsMode = false;
   var isPosting = false;
-  var currentThread = 'all';
+  var currentThread = '';
   var activeDMTarget = '';
 
-  // --- 規約読み込み & スクリプト初期設定 ---
+  // --- UI表示制御 ---
+  function updateUIVisibility() {
+    var isLoggedIn = (SID && SID !== "None" && SID !== "");
+    var createBtn = document.getElementById('create-thread-btn');
+    if (createBtn) {
+      createBtn.style.display = isLoggedIn ? 'inline-block' : 'none';
+    }
+  }
+
+  // --- スレッド管理 ---
+  function getCustomThreads() {
+    try { return JSON.parse(localStorage.getItem('custom_threads') || '[]'); } catch(e) { return []; }
+  }
+
+  function renderThreadTabs() {
+    var container = document.getElementById('thread-tabs-container');
+    var threads = getCustomThreads();
+    var html = '';
+    threads.forEach(function(t) {
+      var isActive = (currentThread === t) ? 'active' : '';
+      html += '<div class="thread-tab ' + isActive + '" onclick="switchThread(\'' + t.replace(/'/g, "\\'") + '\', this)">💬 ' + t + '</div>';
+    });
+    container.innerHTML = html;
+  }
+
+  function createThread() {
+    if (!checkLog()) return; // 念のためのチェック
+    var name = prompt("新しいスレッド（ジャンル）名を入力してください:");
+    if (!name) return;
+    name = name.trim();
+    if (!name) return;
+    
+    var threads = getCustomThreads();
+    if (threads.indexOf(name) !== -1) {
+      alert("そのスレッドは既に存在します。");
+      return;
+    }
+    threads.push(name);
+    try { localStorage.setItem('custom_threads', JSON.stringify(threads)); } catch(e) {}
+    
+    currentThread = name;
+    document.getElementById('post-thread-input').value = currentThread;
+    renderThreadTabs();
+    filterPosts();
+  }
+
+  function switchThread(thread, btn) {
+    if (currentThread === thread) {
+      currentThread = '';
+    } else {
+      currentThread = thread;
+    }
+    document.getElementById('post-thread-input').value = currentThread;
+    renderThreadTabs();
+    filterPosts();
+  }
+
+  // --- 規約読み込み ---
   function loadTerms() {
+    var termsBox = document.getElementById('terms-box');
+    termsBox.innerText = '';
     fetch('kiyak.txt')
       .then(function(res) {
         if (!res.ok) throw new Error('Not found');
         return res.text();
       })
       .then(function(text) {
-        document.getElementById('terms-box').innerText = text;
+        termsBox.innerText = text;
       })
       .catch(function() {
-        document.getElementById('terms-box').innerText = "【利用規約】\n1. 他者への誹謗中傷、迷惑行為を禁じます。\n2. 著作権等の権利侵害ファイルの投稿を禁じます。\n3. マナーを守って楽しく利用しましょう。\n(下までスクロールすると同意できます)";
+        termsBox.innerText = '';
       });
   }
 
@@ -239,22 +295,15 @@
     }
   }
 
-  // --- スレッド切り替え & 検索機能 ---
-  function switchThread(thread, btn) {
-    currentThread = thread;
-    var tabs = document.querySelectorAll('.thread-tab');
-    tabs.forEach(function(t) { t.classList.remove('active'); });
-    btn.classList.add('active');
-    filterPosts();
-  }
-
   function filterPosts() {
     var query = document.getElementById('post-search').value.toLowerCase();
     var posts = document.querySelectorAll('#post-list .post, #post-list .reply-post');
     posts.forEach(function(p) {
       var text = p.innerText.toLowerCase();
+      var postThread = p.getAttribute('data-thread') || '';
+      var matchesThread = (currentThread === '' || postThread === currentThread);
       var matchesSearch = text.includes(query);
-      p.style.display = matchesSearch ? 'block' : 'none';
+      p.style.display = (matchesThread && matchesSearch) ? 'block' : 'none';
     });
   }
 
@@ -645,6 +694,8 @@
     if (!p) return document.createElement('div');
     var wrap = document.createElement('div');
     wrap.className = isRep ? 'reply-post' : 'post';
+    if (p.thread) wrap.setAttribute('data-thread', p.thread);
+    
     var url = p.file ? ('/static/uploads/' + p.file.save_name) : null;
     var ext = p.file ? (p.file.ext || "").replace(".", "").toUpperCase() : "";
 
@@ -656,7 +707,6 @@
     var body = document.createElement('div');
     body.style.paddingLeft = isRep ? '42px' : '55px';
 
-    // 通報判定・隠蔽処理
     var reportedMap = getReportedPosts();
     var isReported = reportedMap[p.id];
     var isApproved = p.is_approved || false;
@@ -732,6 +782,8 @@
   }
 
   function load() {
+    updateUIVisibility(); // ← ここでUI表示・非表示を切り替え
+    renderThreadTabs();
     var xhr1 = new XMLHttpRequest();
     xhr1.open('GET', '/classroom?get_type=json', true);
     xhr1.onload = function() {
