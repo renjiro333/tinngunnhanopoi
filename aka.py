@@ -740,7 +740,6 @@ def classroom_page():
 
         # ログイン・登録
         elif action_type in ["login", "register"]:
-            # ...（この部分は今のままでOK）
             mode = flask.request.form.get("mode")
             name = flask.request.form.get("username")
             data = loaddata()
@@ -761,7 +760,7 @@ def classroom_page():
             USER_SESSIONS[new_sid] = {"student_name": name, "icon_filename": fname}
             return flask.jsonify({"status": "ok", "sid": new_sid, "icon": fname})
 
-        # 投稿処理 ← ここを強化
+        # 投稿処理 (フロント追加オプション機能対応版)
         elif action_type == "post":
             try:
                 sid = flask.request.form.get("sid")
@@ -773,6 +772,11 @@ def classroom_page():
                 post_file = flask.request.files.get("post_file")
                 msg = flask.request.form.get("message", "").strip()
                 reply_to = flask.request.form.get("reply_to", "").strip() or None
+                
+                # 新機能パラメータの受け取り
+                thread = flask.request.form.get("thread", "").strip()
+                content_restriction = flask.request.form.get("content_restriction", "none").strip()
+                is_highlight = flask.request.form.get("is_highlight", "false")
 
                 if not msg and not (post_file and post_file.filename):
                     return flask.jsonify({"status": "error", "error": "メッセージかファイルを入力してください"}), 400
@@ -786,7 +790,10 @@ def classroom_page():
                     "file": None,
                     "likes": 0,
                     "views": 0,
-                    "reply_to": reply_to
+                    "reply_to": reply_to,
+                    "thread": thread,
+                    "content_restriction": content_restriction,
+                    "is_highlight": is_highlight
                 }
 
                 if post_file and post_file.filename:
@@ -809,14 +816,14 @@ def classroom_page():
                 return flask.jsonify({"status": "ok"})
 
             except Exception as e:
-                print("投稿エラー:", str(e))  # サーバーログに残す
+                print("投稿エラー:", str(e))
                 return flask.jsonify({"status": "error", "error": str(e)}), 500
 
         # その他のアクション
         else:
             return flask.jsonify({"status": "error", "error": "不明なaction_type"}), 400
 
-    # GET処理（変更なし）
+    # GET処理
     get_type = flask.request.args.get("get_type")
     user_dict = loaddata()
     all_posts = loadposts()
@@ -828,10 +835,13 @@ def classroom_page():
             item["likes"] = int(item.get("likes", 0))
             if "type" in item: del item["type"]
             formatted_list.append(item)
+
         for name, info in user_dict.items():
-            formatted_list.append({"type": "user", "user": name, "icon": info["icon"]})
+            formatted_list.append({"type": "user", "user": name, "icon": info.get("icon", "default.png")})
+
         valid_hot_posts = [p for p in all_posts if int(p.get("likes", 0)) > 0]
         hot_posts = sorted(valid_hot_posts, key=lambda x: int(x.get("likes", 0)), reverse=True)[:5]
+
         return flask.jsonify({"all": formatted_list, "hot": hot_posts, "access_count": access_count})
 
     # 通常のHTMLレンダリング
@@ -848,58 +858,20 @@ def classroom_page():
         access_count=access_count,
     )
 
-    # ── GET ──
-    get_type = flask.request.args.get("get_type")
-    user_dict = loaddata()
-    all_posts = loadposts()
-
-    if get_type == "json":
-        formatted_list = []
-        for p in all_posts:
-            item = p.copy()
-            # ★修正: 念のためlikesを数値型に変換して持たせる
-            item["likes"] = int(item.get("likes", 0))
-            if "type" in item: del item["type"]
-            formatted_list.append(item)
-
-        for name, info in user_dict.items():
-            formatted_list.append({"type": "user", "user": name, "icon": info["icon"]})
-
-        # ★修正: いいね数が0より大きいものだけを抽出し、確実に数値(int)でソートする
-        valid_hot_posts = [p for p in all_posts if int(p.get("likes", 0)) > 0]
-        hot_posts = sorted(valid_hot_posts, key=lambda x: int(x.get("likes", 0)), reverse=True)[:5]
-
-        return flask.jsonify({"all": formatted_list, "hot": hot_posts, "access_count": access_count})
-
-    sid = flask.request.args.get("sid")
-    user_session = USER_SESSIONS.get(sid) if sid else None
-    reg_list = list(user_dict.keys())
-
-    access_count += 1
-
-    return flask.render_template(
-        "main.html",
-        sid=sid,
-        username=user_session["student_name"] if user_session else "Guest",
-        user_icon_filename=user_session["icon_filename"] if user_session else "default.png",
-        registered_users=reg_list,
-        access_count=access_count,
-    )
-
 
 # ─────────────────────────────────────────
 # 🛠️ 【補完】いいね用非同期ルート
 # ─────────────────────────────────────────
 @app.route("/like", methods=["POST"])
 def like_post():
-    data = request.json or {}
+    import flask
+    data = flask.request.json or {}
     post_id = data.get("id")
     action = data.get("action")
     ps = loadposts()
 
     for p in ps:
         if str(p.get("id")) == str(post_id):
-            # ★修正: 文字列結合などのエラーを防ぐため確実にintで計算
             current_likes = int(p.get("likes", 0))
             if action == "plus":
                 p["likes"] = current_likes + 1
@@ -908,11 +880,12 @@ def like_post():
             break
 
     saveposts(ps)
-    return jsonify({"status": "ok"})
+    return flask.jsonify({"status": "ok"})
 
 
 @app.route("/api/files")
 def api_files():
+    import flask
     items = []
     if os.path.exists(UPLOAD_DIR):
         for fname in os.listdir(UPLOAD_DIR):
@@ -922,8 +895,7 @@ def api_files():
             elif ext in (".jpg", ".jpeg", ".png", ".gif", ".webp"): ftype = "image"
             else: ftype = "other"
             items.append({"save_name": fname, "type": ftype, "ext": ext, "url": f"/static/uploads/{fname}"})
-    return jsonify({"files": items})
-
+    return flask.jsonify({"files": items})
 
 # ─────────────────────────────────────────
 # /chat AI チャット
