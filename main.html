@@ -5,8 +5,13 @@
   <title>教育用学習サイト</title>
   <style id="main-style">
     body { font-family: sans-serif; margin: 0; background: #f0f8ff; display: flex; flex-direction: column; justify-content: flex-start; height: 100vh; overflow: hidden; transition: 0.3s; }
-    .top-bar { background: #fff; border-bottom: 2px solid #00bcd4; padding: 6px 15px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-    .app-wrapper { display: flex; width: 95vw; max-width: 1400px; height: calc(95vh - 44px); margin: 10px auto 0; gap: 15px; }
+    .top-bar { background: #fff; border-bottom: 2px solid #00bcd4; padding: 6px 15px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; flex-wrap: wrap; }
+    .thread-tabs { display: flex; gap: 6px; overflow-x: auto; align-items: center; }
+    .thread-tab { padding: 4px 12px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 12px; cursor: pointer; font-size: 0.8em; font-weight: bold; white-space: nowrap; transition: 0.2s; }
+    .thread-tab.active { background: #00bcd4; color: #fff; border-color: #00bcd4; }
+    .search-box { display: flex; align-items: center; margin-left: auto; }
+    .search-box input { padding: 5px 10px; border: 1px solid #ccc; border-radius: 15px; font-size: 0.8em; outline: none; width: 140px; }
+    .app-wrapper { display: flex; width: 95vw; max-width: 1400px; height: calc(95vh - 50px); margin: 8px auto 0; gap: 15px; }
     .column { background: #fff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: flex; flex-direction: column; padding: 20px; box-sizing: border-box; }
     .col-left { flex: 1; overflow-y: auto; }
     .col-center { flex: 3; height: 100%; overflow-y: auto; min-width: 0; }
@@ -16,8 +21,9 @@
     .user-horizontal-list { display: flex; flex-direction: row; overflow-x: auto; gap: 15px; padding: 10px 5px; width: 100%; box-sizing: border-box; scrollbar-width: thin; }
     .user-horizontal-list::-webkit-scrollbar { height: 6px; }
     .user-horizontal-list::-webkit-scrollbar-thumb { background: #4caf50; border-radius: 10px; }
-    .user-card { flex: 0 0 80px; display: flex; flex-direction: column; align-items: center; text-align: center; }
-    .user-card img { width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 3px solid #4caf50; box-shadow: 0 3px 8px rgba(0,0,0,0.15); }
+    .user-card { flex: 0 0 80px; display: flex; flex-direction: column; align-items: center; text-align: center; cursor: pointer; }
+    .user-card img { width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 3px solid #4caf50; box-shadow: 0 3px 8px rgba(0,0,0,0.15); transition: 0.2s; }
+    .user-card img:hover { transform: scale(1.05); }
     .user-card span { font-size: 0.75em; margin-top: 8px; font-weight: bold; color: #333; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .user-status-area { display: flex; align-items: center; gap: 10px; }
     .current-user-icon { width: 40px; height: 40px; border-radius: 50%; border: 2px solid #00bcd4; object-fit: cover; box-shadow: 0 2px 5px rgba(0,0,0,0.1); cursor: pointer; }
@@ -35,71 +41,110 @@
     .custom-file-btn { display: inline-block; padding: 8px 16px; cursor: pointer; background: #fff; border: 2px solid #00bcd4; border-radius: 20px; color: #00bcd4; font-weight: bold; font-size: 0.8em; transition: 0.2s; }
     .refresh-btn { background: #fff; border: 1px solid #00bcd4; color: #00bcd4; padding: 5px 10px; border-radius: 15px; cursor: pointer; font-size: 0.8em; font-weight: bold; transition: 0.2s; }
     .refresh-btn:hover { background: #00bcd4; color: #fff; }
-    #login-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9999; justify-content: center; align-items: center; }
-    .login-container { width: 380px; background: #fff; padding: 30px; border-radius: 12px; position: relative; }
+    #login-overlay, #icon-overlay, #dm-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9999; justify-content: center; align-items: center; }
+    .login-container, .icon-container, .dm-container { width: 400px; background: #fff; padding: 25px; border-radius: 12px; position: relative; max-height: 90vh; overflow-y: auto; }
     .dynamic-login-title { font-size: 1.2em; text-align: center; font-weight: bold; margin-bottom: 15px; }
+    .terms-box { border: 1px solid #ccc; height: 120px; overflow-y: scroll; padding: 10px; font-size: 0.75em; background: #fafafa; border-radius: 6px; margin-top: 10px; white-space: pre-wrap; }
+    .terms-agree-area { margin-top: 8px; font-size: 0.8em; display: flex; align-items: center; gap: 5px; }
     .hidden-user-list { display: none; border: 2px solid #0f0; padding: 15px; background: #000; color: #0f0; font-family: monospace; position: fixed; bottom: 20px; left: 20px; z-index: 10000; max-height: 300px; overflow-y: auto; }
     .debug-mode * { font-family: monospace !important; border-radius: 0 !important; }
     .debug-mode body { background: #c0c0c0 !important; }
-    #icon-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9999; justify-content: center; align-items: center; }
-    .icon-container { width: 340px; background: #fff; padding: 25px; border-radius: 12px; position: relative; text-align: center; }
     body.ds-mode { background: #1a1a2e; overflow: auto; height: auto; display: block; }
     body.ds-mode .app-wrapper { display: block; width: 100%; max-width: 400px; margin: 0 auto; height: auto; }
-    body.ds-mode .col-left { display: none; }
-    body.ds-mode .col-right { display: none; }
+    body.ds-mode .col-left, body.ds-mode .col-right { display: none; }
     body.ds-mode .col-center { width: 100%; height: auto; overflow: visible; box-shadow: none; border-radius: 0; }
-    body.ds-mode .top-bar { font-size: 0.75em; padding: 4px 8px; }
-    body.ds-mode #post-form textarea { font-size: 0.85em; }
-    body.ds-mode .post { padding: 8px 0; font-size: 0.8em; }
-    body.ds-mode .post img.user-icon { width: 30px; height: 30px; }
-    body.ds-mode .media-content { max-width: 100%; }
-    body.ds-mode .yt-container { width: 100%; }
     .ds-btn { background: #1a1a2e; color: #00bcd4; border: 2px solid #00bcd4; padding: 4px 10px; border-radius: 10px; cursor: pointer; font-size: 0.8em; font-weight: bold; }
     .ds-btn.active { background: #00bcd4; color: #fff; }
+    .reported-msg { background: #ffe4e8; color: #d32f2f; padding: 8px 12px; border-radius: 6px; font-size: 0.85em; font-weight: bold; border-left: 4px solid #d32f2f; }
   </style>
 </head>
 <body>
+
 <!-- トップバー -->
 <div class="top-bar">
   <button class="ds-btn" id="ds-toggle-btn" onclick="toggleDS()">🎮 3DSモード</button>
   <span style="font-size:0.8em; color:#888;" id="ds-status"></span>
-  <a href="/full" style="margin-left:8px; padding:4px 10px; background:#fff; border:2px solid #aaa; border-radius:10px; color:#666; font-size:0.8em; font-weight:bold; text-decoration:none;">← 戻る</a>
+  <a href="/full" style="padding:4px 10px; background:#fff; border:2px solid #aaa; border-radius:10px; color:#666; font-size:0.8em; font-weight:bold; text-decoration:none;">← 戻る</a>
+  
+  <!-- スレッド（ジャンル）切り替えタブ -->
+  <div class="thread-tabs">
+    <div class="thread-tab active" onclick="switchThread('all', this)">🌐 全般</div>
+    <div class="thread-tab" onclick="switchThread('free', this)">💬 雑談</div>
+    <div class="thread-tab" onclick="switchThread('qa', this)">❓ 質問</div>
+    <div class="thread-tab" onclick="switchThread('media', this)">🎨 メディア</div>
+  </div>
+
+  <!-- 検索バー -->
+  <div class="search-box">
+    <input type="text" id="post-search" placeholder="🔍 投稿を検索..." oninput="filterPosts()">
+  </div>
 </div>
 
-<!-- ログインオーバーレイ -->
+<!-- ログイン / 新規登録 モーダル -->
 <div id="login-overlay" style="display:none;">
   <div class="login-container">
     <span style="position:absolute; top:10px; right:15px; cursor:pointer; font-size:1.5em;" onclick="closeModal()">×</span>
     <div id="dynamic-title" class="dynamic-login-title">ログイン</div>
-    <div style="display:flex; border-bottom:2px solid #00bcd4; margin-bottom:20px;">
-      <div id="mt-reg" style="flex:1; text-align:center; padding:10px; cursor:pointer; font-weight:bold; color:#00bcd4;" onclick="swM('register')">初めて</div>
-      <div id="mt-log" style="flex:1; text-align:center; padding:10px; cursor:pointer; font-weight:bold; color:#888;" onclick="swM('login')">登録済み</div>
+    <div style="display:flex; border-bottom:2px solid #00bcd4; margin-bottom:15px;">
+      <div id="mt-reg" style="flex:1; text-align:center; padding:8px; cursor:pointer; font-weight:bold; color:#00bcd4;" onclick="swM('register')">初めて</div>
+      <div id="mt-log" style="flex:1; text-align:center; padding:8px; cursor:pointer; font-weight:bold; color:#888;" onclick="swM('login')">登録済み</div>
     </div>
-    <input type="text" id="login-username" placeholder="名前を入力" style="width:100%; padding:12px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box;">
-    <div id="mi-sect" style="margin-top:15px;">
-    <label class="custom-file-btn">
-      <input type="file" id="login-icon-file" accept="image/*" onchange="upName(this,'mn-icon')">アイコン選択
-    </label>
+    
+    <input type="text" id="login-username" placeholder="名前を入力" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; margin-bottom:10px;">
+    
+    <!-- 新規作成時のみ表示する項目 -->
+    <div id="mi-sect">
+      <input type="password" id="login-password" placeholder="パスワードを設定" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; margin-bottom:10px;">
+      
+      <label class="custom-file-btn">
+        <input type="file" id="login-icon-file" accept="image/*" onchange="upName(this,'mn-icon')">アイコン選択 (画像全般)
+      </label>
       <span id="mn-icon" style="font-size:0.7em; color:#888; margin-left:5px;"></span>
+
+      <!-- 利用規約エリア -->
+      <div style="margin-top:12px;">
+        <span style="font-size:0.8em; font-weight:bold; color:#555;">📜 利用規約 (一番下までスクロールして確認)</span>
+        <div class="terms-box" id="terms-box" onscroll="checkTermsScroll(this)">
+          規約を読み込み中...
+        </div>
+        <div class="terms-agree-area">
+          <input type="checkbox" id="terms-check" disabled>
+          <label for="terms-check">規約をすべて確認し同意しました</label>
+        </div>
+      </div>
     </div>
+
     <p id="login-err" style="color:red; font-size:0.85em; min-height:1.2em; margin-top:8px;"></p>
-    <button onclick="doLogin()" style="width:100%; padding:12px; background:#00bcd4; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">入室する</button>
+    <button onclick="doLogin()" style="width:100%; padding:12px; background:#00bcd4; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; margin-top:5px;">入室する</button>
   </div>
 </div>
 
 <!-- アイコン変更モーダル -->
 <div id="icon-overlay" style="display:none;">
-  <div class="icon-container">
+  <div class="icon-container" style="text-align:center;">
     <span style="position:absolute; top:10px; right:15px; cursor:pointer; font-size:1.5em;" onclick="closeIconModal()">×</span>
     <h3 style="margin-top:0;">アイコン変更</h3>
     <img id="icon-preview" src="" style="width:80px; height:80px; border-radius:50%; border:3px solid #00bcd4; object-fit:cover; margin-bottom:15px;">
     <div>
       <label class="custom-file-btn">
-        <input type="file" id="icon-change-file" accept=".png" onchange="previewIcon(this)">新しいアイコンを選ぶ (.png)
+        <input type="file" id="icon-change-file" accept="image/*" onchange="previewIcon(this)">新しいアイコンを選ぶ (画像全般)
       </label>
     </div>
     <p id="icon-err" style="color:red; font-size:0.85em; min-height:1.2em; margin-top:8px;"></p>
     <button onclick="doChangeIcon()" style="width:100%; padding:12px; background:#00bcd4; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; margin-top:10px;">変更する</button>
+  </div>
+</div>
+
+<!-- DM モーダル -->
+<div id="dm-modal" style="display:none;">
+  <div class="dm-container">
+    <span style="position:absolute; top:10px; right:15px; cursor:pointer; font-size:1.5em;" onclick="closeDM()">×</span>
+    <h3 style="margin-top:0; border-bottom:2px solid #00bcd4; padding-bottom:8px;">💬 DM: <span id="dm-target-user"></span></h3>
+    <div id="dm-chat-log" style="height:220px; overflow-y:auto; border:1px solid #eee; padding:10px; border-radius:8px; margin-bottom:10px; background:#fafafa;"></div>
+    <div style="display:flex; gap:8px;">
+      <input type="text" id="dm-input" placeholder="メッセージを入力..." style="flex:1; padding:8px; border:1px solid #ccc; border-radius:6px;">
+      <button onclick="sendDM()" style="padding:8px 15px; background:#00bcd4; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">送信</button>
+    </div>
   </div>
 </div>
 
@@ -153,7 +198,7 @@
       <div id="hot-posts" style="margin-top:15px;"></div>
     </div>
     <div class="column member-section">
-      <strong style="border-bottom: 2px solid #4caf50; display:block; padding-bottom:5px;">👥 メンバー</strong>
+      <strong style="border-bottom: 2px solid #4caf50; display:block; padding-bottom:5px;">👥 メンバー (クリックでDM)</strong>
       <div class="user-horizontal-list" id="user-container"></div>
     </div>
   </div>
@@ -169,8 +214,115 @@
   var CURRENT_USER = "{{ username }}";
   var _curMode = 'register';
   var _dsMode = false;
-  var isPosting = false;  // 連打防止
+  var isPosting = false;
+  var currentThread = 'all';
+  var activeDMTarget = '';
 
+  // --- 規約読み込み & スクリプト初期設定 ---
+  function loadTerms() {
+    fetch('kiyak.txt')
+      .then(function(res) {
+        if (!res.ok) throw new Error('Not found');
+        return res.text();
+      })
+      .then(function(text) {
+        document.getElementById('terms-box').innerText = text;
+      })
+      .catch(function() {
+        document.getElementById('terms-box').innerText = "【利用規約】\n1. 他者への誹謗中傷、迷惑行為を禁じます。\n2. 著作権等の権利侵害ファイルの投稿を禁じます。\n3. マナーを守って楽しく利用しましょう。\n(下までスクロールすると同意できます)";
+      });
+  }
+
+  function checkTermsScroll(el) {
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 5) {
+      document.getElementById('terms-check').disabled = false;
+    }
+  }
+
+  // --- スレッド切り替え & 検索機能 ---
+  function switchThread(thread, btn) {
+    currentThread = thread;
+    var tabs = document.querySelectorAll('.thread-tab');
+    tabs.forEach(function(t) { t.classList.remove('active'); });
+    btn.classList.add('active');
+    filterPosts();
+  }
+
+  function filterPosts() {
+    var query = document.getElementById('post-search').value.toLowerCase();
+    var posts = document.querySelectorAll('#post-list .post, #post-list .reply-post');
+    posts.forEach(function(p) {
+      var text = p.innerText.toLowerCase();
+      var matchesSearch = text.includes(query);
+      p.style.display = matchesSearch ? 'block' : 'none';
+    });
+  }
+
+  // --- 通報機能 ---
+  function getReportedPosts() {
+    try { return JSON.parse(localStorage.getItem('reported_posts') || '{}'); } catch(e) { return {}; }
+  }
+
+  function reportPost(postId, isApproved) {
+    if (isApproved) {
+      alert("この投稿は管理者認証済み(is_approved: true)のため通報されても隠蔽されません。");
+      return;
+    }
+    var reason = prompt("通報理由を入力してください:");
+    if (!reason) return;
+    var reported = getReportedPosts();
+    reported[postId] = { reason: reason, time: new Date().toISOString() };
+    try { localStorage.setItem('reported_posts', JSON.stringify(reported)); } catch(e) {}
+    alert("通報を受理しました。管理者の認証を受けるまで本文は一時隠蔽されます。");
+    load();
+  }
+
+  // --- DM機能 ---
+  function openDM(targetUser) {
+    if (!checkLog()) return;
+    if (targetUser === CURRENT_USER) { alert("自分にはDMを送れません。"); return; }
+    activeDMTarget = targetUser;
+    document.getElementById('dm-target-user').innerText = targetUser;
+    renderDMLog();
+    document.getElementById('dm-modal').style.display = 'flex';
+  }
+
+  function closeDM() { document.getElementById('dm-modal').style.display = 'none'; }
+
+  function getDMs() {
+    try { return JSON.parse(localStorage.getItem('dm_logs') || '{}'); } catch(e) { return {}; }
+  }
+
+  function renderDMLog() {
+    var dms = getDMs();
+    var pairKey = [CURRENT_USER, activeDMTarget].sort().join('::');
+    var logs = dms[pairKey] || [];
+    var logDiv = document.getElementById('dm-chat-log');
+    logDiv.innerHTML = '';
+    logs.forEach(function(msg) {
+      var p = document.createElement('div');
+      p.style.cssText = "margin-bottom:8px; text-align:" + (msg.sender === CURRENT_USER ? "right" : "left") + ";";
+      p.innerHTML = '<span style="font-size:0.7em; color:#888;">' + msg.sender + '</span><br>' +
+        '<span style="display:inline-block; padding:6px 12px; border-radius:10px; font-size:0.85em; background:' + (msg.sender === CURRENT_USER ? '#00bcd4; color:#fff;' : '#e0e0e0; color:#333;') + '">' + msg.text + '</span>';
+      logDiv.appendChild(p);
+    });
+    logDiv.scrollTop = logDiv.scrollHeight;
+  }
+
+  function sendDM() {
+    var inp = document.getElementById('dm-input');
+    var text = inp.value.trim();
+    if (!text) return;
+    var dms = getDMs();
+    var pairKey = [CURRENT_USER, activeDMTarget].sort().join('::');
+    if (!dms[pairKey]) dms[pairKey] = [];
+    dms[pairKey].push({ sender: CURRENT_USER, text: text, time: new Date().toISOString() });
+    try { localStorage.setItem('dm_logs', JSON.stringify(dms)); } catch(e) {}
+    inp.value = '';
+    renderDMLog();
+  }
+
+  // --- モーダル制御 ---
   function toggleDS() {
     _dsMode = !_dsMode;
     var btn = document.getElementById('ds-toggle-btn');
@@ -186,7 +338,11 @@
     }
   }
 
-  function openModal() { document.getElementById('login-overlay').style.display = 'flex'; }
+  function openModal() {
+    swM('register');
+    loadTerms();
+    document.getElementById('login-overlay').style.display = 'flex';
+  }
   function closeModal() { document.getElementById('login-overlay').style.display = 'none'; }
   function checkLog() { 
     if(!SID || SID === "None" || SID === "") { 
@@ -214,6 +370,7 @@
       reader.readAsDataURL(input.files[0]);
     }
   }
+
   function doChangeIcon() {
     var file = document.getElementById('icon-change-file').files[0];
     var errEl = document.getElementById('icon-err');
@@ -248,7 +405,7 @@
     document.getElementById('mi-sect').style.display = isR ? 'block' : 'none';
     document.getElementById('mt-reg').style.color = isR ? '#00bcd4' : '#888';
     document.getElementById('mt-log').style.color = isR ? '#888' : '#00bcd4';
-    document.getElementById('dynamic-title').innerText = isR ? "ログイン" : "お帰りなさい";
+    document.getElementById('dynamic-title').innerText = isR ? "新規登録" : "ログイン";
   }
 
   function upName(input, targetId) { 
@@ -265,15 +422,25 @@
     var errEl = document.getElementById('login-err');
     errEl.textContent = "";
     if (!name) { errEl.textContent = "名前を入力してください"; return; }
+
     var fd = new FormData();
     fd.append("action_type", _curMode);
     fd.append("mode", _curMode);
     fd.append("username", name);
+
     if (_curMode === "register") {
+      var pass = document.getElementById('login-password').value.trim();
       var iconFile = document.getElementById('login-icon-file').files[0];
-      if (!iconFile) { errEl.textContent = "アイコン(.png)を選んでください"; return; }
+      var agreed = document.getElementById('terms-check').checked;
+
+      if (!pass) { errEl.textContent = "パスワードを設定してください"; return; }
+      if (!iconFile) { errEl.textContent = "アイコン画像を選んでください"; return; }
+      if (!agreed) { errEl.textContent = "利用規約を最後まで読み、同意してください"; return; }
+
+      fd.append("password", pass);
       fd.append("icon", iconFile);
     }
+
     var xhr = new XMLHttpRequest();
     xhr.open('POST', '/classroom', true);
     xhr.onload = function() {
@@ -298,7 +465,6 @@
     xhr.send(fd);
   }
 
-  // 日本時間表示補正
   function formatJST(timeStr) {
     if (!timeStr) return '';
     const [monthDay, time] = timeStr.split(' ');
@@ -316,7 +482,6 @@
     return `${m}/${d} ${h}:${mi}`;
   }
 
-  // 投稿関数（連打防止）
   function submitPost(e) {
     e.preventDefault();
     if (!checkLog() || isPosting) return false;
@@ -333,41 +498,25 @@
 
     var xhr = new XMLHttpRequest();
     xhr.open('POST', '/classroom', true);
-
     xhr.onload = function() {
       isPosting = false;
       submitBtn.disabled = false;
       submitBtn.textContent = originalText;
-
       if (xhr.status === 200) {
-        try {
-          var res = JSON.parse(xhr.responseText);
-          if (res.status === "ok") {
-            form.reset();
-            document.getElementById('n-post').textContent = '';
-            cancelR();
-            load();
-          } else {
-            alert("投稿失敗: " + (res.error || "不明なエラー"));
-          }
-        } catch(e) {
-          form.reset();
-          document.getElementById('n-post').textContent = '';
-          cancelR();
-          load();
-        }
+        form.reset();
+        document.getElementById('n-post').textContent = '';
+        cancelR();
+        load();
       } else {
-        alert("サーバーエラー: " + xhr.status);
+        alert("エラーが発生しました: " + xhr.status);
       }
     };
-
     xhr.onerror = function() {
       isPosting = false;
       submitBtn.disabled = false;
       submitBtn.textContent = originalText;
       alert('通信エラー');
     };
-
     xhr.send(fd);
     return false;
   }
@@ -378,30 +527,6 @@
     var m = t.match(r);
     return m ? '<div class="yt-container"><iframe src="https://www.youtube.com/embed/' + m[1] + '" allowfullscreen></iframe></div>' : "";
   }
-
-  var keys = {};
-  window.addEventListener('keydown', function(e) {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-    var key = (e.key || '').toLowerCase();
-    keys[key] = true;
-    var need1 = ['p','o','a','s','d','l'];
-    var need2 = ['p','o','a','s','d'];
-    var ok1 = true, ok2 = true;
-    for (var i = 0; i < need1.length; i++) if (!keys[need1[i]]) { ok1 = false; break; }
-    for (var i = 0; i < need2.length; i++) if (!keys[need2[i]]) { ok2 = false; break; }
-    if (ok1) { 
-      document.body.classList.toggle('debug-mode'); 
-      keys = {}; 
-    }
-    else if (ok2) { 
-      var el = document.getElementById('hidden-list'); 
-      el.style.display = el.style.display === 'block' ? 'none' : 'block'; 
-      keys = {}; 
-    }
-  });
-  window.addEventListener('keyup', function(e) { 
-    delete keys[(e.key || '').toLowerCase()]; 
-  });
 
   function delP(id) {
     if(!confirm("この投稿を削除しますか？")) return;
@@ -522,81 +647,84 @@
     wrap.className = isRep ? 'reply-post' : 'post';
     var url = p.file ? ('/static/uploads/' + p.file.save_name) : null;
     var ext = p.file ? (p.file.ext || "").replace(".", "").toUpperCase() : "";
+
     if (p.file && !isRep) {
       appendGalleryItem(gDiv, { save_name: p.file.save_name, type: p.file.type, ext: p.file.ext, url: url }, 'by ' + p.user);
     }
+
     wrap.innerHTML = '<div class="post-header"><img src="/static/icons/' + (p.icon || 'default.png') + '" class="user-icon" onerror="this.src=\'/static/icons/default.png\'"><b>' + (p.user || 'Unknown') + '</b><span style="font-size:0.7em; color:#999; margin-left:auto;">' + formatJST(p.time) + '</span></div>';
     var body = document.createElement('div');
     body.style.paddingLeft = isRep ? '42px' : '55px';
-    var msg = document.createElement('p');
-    msg.style.cssText = "margin:5px 0; line-height:1.5;";
-    msg.textContent = p.message || '';
-    body.appendChild(msg);
-    var ytHtml = getYT(p.message);
-    if (ytHtml) {
-      var ytDiv = document.createElement('div');
-      ytDiv.innerHTML = ytHtml;
-      body.appendChild(ytDiv);
-    }
-    if (p.file) {
-      if (p.file.type === "image") {
-        var img2 = document.createElement('img');
-        img2.src = url;
-        img2.className = "media-content";
-        fixPortrait(img2);
-        body.appendChild(img2);
-        var lbl2 = document.createElement('div');
-        lbl2.className = "file-detail-desc";
-        lbl2.textContent = "▲ これは ." + ext + " ファイルです";
-        body.appendChild(lbl2);
-      } else if (p.file.type === "video") {
-        var vid2 = document.createElement('video');
-        vid2.controls = true;
-        vid2.preload = "metadata";
-        vid2.className = "media-content";
-        vid2.src = url;
-        fixPortrait(vid2);
-        body.appendChild(vid2);
-        var lbl3 = document.createElement('div');
-        lbl3.className = "file-detail-desc";
-        lbl3.textContent = "▲ これは ." + ext + " ファイルです";
-        body.appendChild(lbl3);
-      } else if (p.file.type === "audio") {
-        var aud2 = document.createElement('audio');
-        aud2.controls = true;
-        aud2.preload = "metadata";
-        aud2.className = "media-content";
-        aud2.src = url;
-        body.appendChild(aud2);
-        var lbl4 = document.createElement('div');
-        lbl4.className = "file-detail-desc";
-        lbl4.textContent = "▲ これは ." + ext + " ファイルです";
-        body.appendChild(lbl4);
-      } else {
-        var fileIcon2 = document.createElement('div');
-        fileIcon2.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-top:10px;";
-        var fileRow2 = document.createElement('div');
-        fileRow2.style.cssText = "display:inline-flex; align-items:center; gap:8px; padding:8px 12px; background:#f5f5f5; border:1px solid #ddd; border-radius:8px; font-size:0.85em; color:#444;";
-        fileRow2.innerHTML = fileIconSVG() + '<span>' + (p.file.original_name || p.file.save_name) + '</span>';
-        var dlBtn2 = document.createElement('a');
-        dlBtn2.href = url;
-        dlBtn2.download = p.file.original_name || p.file.save_name;
-        dlBtn2.textContent = '⬇ ダウンロード';
-        dlBtn2.style.cssText = "display:inline-block; padding:5px 12px; background:#00bcd4; color:#fff; border-radius:6px; font-size:0.8em; font-weight:bold; text-decoration:none;";
-        fileIcon2.appendChild(fileRow2);
-        fileIcon2.appendChild(dlBtn2);
-        body.appendChild(fileIcon2);
-        var lbl5 = document.createElement('div');
-        lbl5.className = "file-detail-desc";
-        lbl5.textContent = "▲ これは ." + ext + " ファイルです";
-        body.appendChild(lbl5);
+
+    // 通報判定・隠蔽処理
+    var reportedMap = getReportedPosts();
+    var isReported = reportedMap[p.id];
+    var isApproved = p.is_approved || false;
+
+    if (isReported && !isApproved) {
+      var repMsg = document.createElement('div');
+      repMsg.className = 'reported-msg';
+      repMsg.innerText = '⚠️ この投稿は通報されたため、管理者の認証を受けるまで本文を一時隠蔽しています。';
+      body.appendChild(repMsg);
+    } else {
+      var msg = document.createElement('p');
+      msg.style.cssText = "margin:5px 0; line-height:1.5;";
+      msg.textContent = p.message || '';
+      body.appendChild(msg);
+
+      var ytHtml = getYT(p.message);
+      if (ytHtml) {
+        var ytDiv = document.createElement('div');
+        ytDiv.innerHTML = ytHtml;
+        body.appendChild(ytDiv);
+      }
+
+      if (p.file) {
+        if (p.file.type === "image") {
+          var img2 = document.createElement('img');
+          img2.src = url;
+          img2.className = "media-content";
+          fixPortrait(img2);
+          body.appendChild(img2);
+        } else if (p.file.type === "video") {
+          var vid2 = document.createElement('video');
+          vid2.controls = true;
+          vid2.preload = "metadata";
+          vid2.className = "media-content";
+          vid2.src = url;
+          fixPortrait(vid2);
+          body.appendChild(vid2);
+        } else if (p.file.type === "audio") {
+          var aud2 = document.createElement('audio');
+          aud2.controls = true;
+          aud2.preload = "metadata";
+          aud2.className = "media-content";
+          aud2.src = url;
+          body.appendChild(aud2);
+        } else {
+          var fileIcon2 = document.createElement('div');
+          fileIcon2.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-top:10px;";
+          var fileRow2 = document.createElement('div');
+          fileRow2.style.cssText = "display:inline-flex; align-items:center; gap:8px; padding:8px 12px; background:#f5f5f5; border:1px solid #ddd; border-radius:8px; font-size:0.85em; color:#444;";
+          fileRow2.innerHTML = fileIconSVG() + '<span>' + (p.file.original_name || p.file.save_name) + '</span>';
+          var dlBtn2 = document.createElement('a');
+          dlBtn2.href = url;
+          dlBtn2.download = p.file.original_name || p.file.save_name;
+          dlBtn2.textContent = '⬇ ダウンロード';
+          dlBtn2.style.cssText = "display:inline-block; padding:5px 12px; background:#00bcd4; color:#fff; border-radius:6px; font-size:0.8em; font-weight:bold; text-decoration:none;";
+          fileIcon2.appendChild(fileRow2);
+          fileIcon2.appendChild(dlBtn2);
+          body.appendChild(fileIcon2);
+        }
       }
     }
+
     var liked = (lk.indexOf(p.id) >= 0);
     var actions = document.createElement('div');
     actions.style.cssText = "margin-top:10px; font-size:0.8em;";
     actions.innerHTML = '<span style="color:#00bcd4; cursor:pointer; font-weight:bold;" onclick="setR(\'' + p.id + '\',\'' + (p.user || '') + '\')">返信</span>'
-      + '<span style="margin-left:20px; color:' + (liked ? '#ff4081' : '#ccc') + '; cursor:pointer; font-weight:bold;" onclick="doL(\'' + p.id + '\')">❤️ ' + (p.likes || 0) + '</span>'
+      + '<span style="margin-left:15px; color:' + (liked ? '#ff4081' : '#ccc') + '; cursor:pointer; font-weight:bold;" onclick="doL(\'' + p.id + '\')">❤️ ' + (p.likes || 0) + '</span>'
+      + '<span style="margin-left:15px; color:#ff9800; cursor:pointer; font-weight:bold;" onclick="reportPost(\'' + p.id + '\', ' + isApproved + ')">🚨 通報</span>'
       + (p.user === CURRENT_USER ? '<span style="margin-left:15px; color:#ff4081; cursor:pointer; font-weight:bold;" onclick="delP(\'' + p.id + '\')">削除</span>' : '');
     body.appendChild(actions);
     wrap.appendChild(body);
@@ -608,7 +736,7 @@
     xhr1.open('GET', '/classroom?get_type=json', true);
     xhr1.onload = function() {
       var data;
-      try { data = JSON.parse(xhr1.responseText); } catch(e) { console.error("JSON parse error"); return; }
+      try { data = JSON.parse(xhr1.responseText); } catch(e) { return; }
       var xhr2 = new XMLHttpRequest();
       xhr2.open('GET', '/api/files', true);
       xhr2.onload = function() {
@@ -621,16 +749,19 @@
         var uCon = document.getElementById("user-container");
         var hDiv = document.getElementById("hot-posts");
         pDiv.innerHTML = ""; gDiv.innerHTML = ""; uCon.innerHTML = ""; hDiv.innerHTML = "";
+
         var users = data.all.filter(function(u) { return u.type === "user"; });
         for (var i = 0; i < users.length; i++) {
           var u = users[i];
-          uCon.innerHTML += '<div class="user-card"><img src="/static/icons/' + (u.icon || 'default.png') + '" onerror="this.src=\'/static/icons/default.png\'"><span>' + (u.user || '') + '</span></div>';
+          uCon.innerHTML += '<div class="user-card" onclick="openDM(\'' + (u.user || '') + '\')"><img src="/static/icons/' + (u.icon || 'default.png') + '" onerror="this.src=\'/static/icons/default.png\'"><span>' + (u.user || '') + '</span></div>';
         }
+
         var posts = data.all.filter(function(p) { return p.type !== "user"; });
         var parents = posts.filter(function(p) { return !p.reply_to; });
         var replies = posts.filter(function(p) { return p.reply_to; });
         var postMediaNames = {};
         var reversed = parents.slice().reverse();
+
         for (var i = 0; i < reversed.length; i++) {
           var p = reversed[i];
           pDiv.appendChild(renderPost(p, false, gDiv, lk));
@@ -638,14 +769,18 @@
           var reps = replies.filter(function(r) { return r.reply_to === p.id; });
           for (var j = 0; j < reps.length; j++) pDiv.appendChild(renderPost(reps[j], true, gDiv, lk));
         }
+
         var files = filesData.files || [];
         for (var i = 0; i < files.length; i++) {
           if (!postMediaNames[files[i].save_name]) appendGalleryItem(gDiv, files[i], null);
         }
+
         for (var i = 0; i < data.hot.length; i++) {
           var hp = data.hot[i];
           hDiv.innerHTML += '<div style="margin-bottom:12px; border-left:4px solid #ff4081; padding:8px 12px; background:rgba(255,64,129,0.03); border-radius:0 8px 8px 0;"><div style="font-weight:bold; font-size:0.9em;">' + (hp.user || '') + '</div><div style="font-size:0.8em; color:#555; margin:4px 0;">' + (hp.message || '').substring(0,40) + '...</div><div style="font-size:0.75em; color:#ff4081; font-weight:bold;">❤️ ' + (hp.likes || 0) + ' likes</div></div>';
         }
+
+        filterPosts();
       };
       xhr2.send();
     };
