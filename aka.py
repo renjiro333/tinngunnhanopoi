@@ -41,6 +41,16 @@ MEDIA_DIR = BASE_DIR
 USER_SESSIONS = {}
 access_count = 0
 
+# --- ここから追加：Chromebookをブロックするおまじない ---
+@app.before_request
+def block_chromebook():
+    from flask import request, abort
+    # アクセスしてきた端末の情報を確認する
+    user_agent = request.user_agent.string.lower()
+    # もし情報の中に「cros (Chrome OS = Chromebook)」が含まれていたら
+    if 'cros' in user_agent:
+        abort(403, description="申し訳ありません。Chromebookからはアクセスできません。")
+# --- ここまで追加 ---
 
 # ─────────────────────────────────────────
 # ユーティリティ
@@ -332,7 +342,7 @@ def full():
     </form>
 
     <h2>🌍 みんなのチャット (NEW!!)</h2>
-    <a href="/classroom">
+    <a href="/buildvi">
       <button style="padding: 0.5em 1em; font-size: 1em;">🖼️ 投稿一覧ページへ</button>
     </a>
 
@@ -546,7 +556,7 @@ def novel_read():
 # ─────────────────────────────────────────
 # /ビルドビ
 # ─────────────────────────────────────────
-@app.route("/classroom", methods=["GET", "POST"])
+@app.route("/buildvi", methods=["GET", "POST"])
 def classroom_page():
     global access_count
     import flask
@@ -754,7 +764,7 @@ def AII():
     <html lang="ja">
     <head>
       <meta charset="utf-8">
-      <title>OPPAI チャット</title>
+      <title>gemini チャット</title>
       <style>
         body { font-family: sans-serif; max-width: 700px; margin: auto; padding: 2em; background: #f8f9fa; }
         .container { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 20px; }
@@ -769,7 +779,7 @@ def AII():
     </head>
     <body>
       <div class="container">
-        <h2>🧠 OPPAI チャット</h2>
+        <h2>🧠 geminiAI チャット</h2>
         <label>キャラクター選択: </label>
         <select id="characterSelect">
           <option value="通常">💬 通常</option>
