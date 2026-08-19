@@ -266,8 +266,8 @@
   function loadTerms() {
     var termsBox = document.getElementById('terms-box');
     termsBox.innerText = '';
-    fetch('kiyak.txt').then(function(res) { if (!res.ok) throw new Error(); return res.text(); })
-      .then(function(text) { termsBox.innerText = text; }).catch(function() {});
+    　　　　fetch('/static/kiyak.txt').then(function(res) { if (!res.ok) throw new Error(); return res.text(); })
+  .then(function(text) { termsBox.innerText = text; }).catch(function() {});
   }
   function checkTermsScroll(el) { if (el.scrollTop + el.clientHeight >= el.scrollHeight - 5) document.getElementById('terms-check').disabled = false; }
 
