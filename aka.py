@@ -158,7 +158,7 @@ def watch():
     # 最新機能: タイトルの決定（videos.txtからの抽出とエラー回避）
     display_title = None
     if filename == "youtube.mp4":
-        display_title = "学校でyoutubeを見る方法 〜完全版〜"
+        display_title = "youtubeを見る方法 徹底解説！(wwwww)"
     else:
         txt_path = os.path.join(BASE_DIR, 'videos.txt')
         if os.path.exists(txt_path) and ("http" in filename or "mega.nz" in filename):
@@ -287,7 +287,7 @@ def full():
             if ext in (".mp3", ".wav"):
                 audio_files.append(tagged)
             elif ext in (".mp4", ".webm"):
-                classroom_videos.append({"value": tagged, "text": "[classroom] " + f})
+                classroom_videos.append({"value": tagged, "text": "[buildvi] " + f})
             elif ext in (".jpg", ".jpeg", ".png", ".gif"):
                 image_files.append(tagged)
 
@@ -299,7 +299,7 @@ def full():
     <form method="get" action="/play">
       <select name="filename">
         {% for f in audio %}
-          <option value="{{ f }}">{{ f.replace("__upload__","[classroom] ") }}</option>
+          <option value="{{ f }}">{{ f.replace("__upload__","[buildvi] ") }}</option>
         {% endfor %}
       </select>
       <input type="submit" value="再生">
@@ -319,7 +319,7 @@ def full():
     <form method="get" action="/view">
       <select name="filename">
         {% for f in images %}
-          <option value="{{ f }}">{{ f.replace("__upload__","[classroom] ") }}</option>
+          <option value="{{ f }}">{{ f.replace("__upload__","[buildvi] ") }}</option>
         {% endfor %}
       </select>
       <input type="submit" value="表示">
