@@ -117,7 +117,17 @@ def saveposts(posts):
     with open(POSTS_FILE, "w", encoding="utf-8") as f:
         json.dump(posts, f, ensure_ascii=False, indent=4)
 
+from flask import request, abort
 
+# 全てのリクエストの前に実行されるチェック
+@app.before_request
+def block_chromebook():
+    user_agent = request.user_agent.string.lower()
+    # User-Agentに 'cros' (Chrome OS) が含まれている場合は403エラーを返す
+    if 'cros' in user_agent:
+        # または render_template で専用のアクセス拒否ページを返しても良いです
+        abort(403, description="Chromebookからのアクセスは許可されていません。")
+        
 # ─────────────────────────────────────────
 # /watch 動画再生
 # ─────────────────────────────────────────
