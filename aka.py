@@ -119,25 +119,7 @@ def saveposts(posts):
 
 
 # ─────────────────────────────────────────
-# / トップページ
-# ─────────────────────────────────────────
-@app.route("/")
-def index():
-    global access_count
-    access_count += 1
-    session["unlocked"] = False
-    html = '''
-    <h2>🎬 学校でYouTubeを見る方法~完全版~</h2>
-    <form method="get" action="/watch">
-      <input type="hidden" name="filename" value="youtube.mp4">
-      <input type="submit" value="再生">
-    </form>
-    <p>アクセス数: {{ count }}</p>
-    '''
-    return render_template_string(html, count=access_count)
-
-# ─────────────────────────────────────────
-# /watch 動画再生 (aka.py UI ＋ 外部URL・最新機能 ＋ 緊急偽装ギミック)
+# /watch 動画再生
 # ─────────────────────────────────────────
 @app.route("/watch")
 def watch():
@@ -187,65 +169,6 @@ def watch():
         src = f"/static/uploads/{filename[len('__upload__'):]}" if filename.startswith("__upload__") else f"/media/{filename}"
         content = f'<video controls autoplay width="640" tabindex="-1"><source src="{src}" type="video/mp4"></video>'
 
-    # ギミック用スクリプト (poasd脱出 + EnterでSmartLearn偽装)
-    extra_script = '''
-    <script>
-      // 1. poasd 順番押しで脱出
-      let inputBuffer = "";
-      document.addEventListener("keydown", function(e) {
-        inputBuffer += e.key.toLowerCase();
-        if (inputBuffer.length > 5) {
-          inputBuffer = inputBuffer.substring(inputBuffer.length - 5);
-        }
-        if (inputBuffer === "poasd") {
-          window.location.href = "/full";
-        }
-      });
-
-      // 2. EnterキーでSmartLearn.jpに偽装 (元のaka.pyの機能)
-      document.addEventListener("keydown", function(e) {
-        if (e.key === "Enter") {
-          history.pushState({}, "", "/smartlearn/home");
-          document.body.innerHTML = `
-            <div style="background:#ffe4e9;padding:1em;font-family:sans-serif;border-bottom:1px solid #ccc;">
-              <span id="menuToggle" style="font-size:1.5em;cursor:pointer;">≡</span>
-              <span style="margin-left:1em;font-size:1.8em;color:#cc3366;">SmartLearn.jp</span>
-            </div>
-            <div id="menu" style="display:none;background:#fff0f5;padding:1em;border-bottom:1px solid #ccc;">
-              <button onclick="loadPage('home')">🏠 ホーム</button>
-              <button onclick="loadPage('materials')">📚 教材一覧</button>
-              <button onclick="loadPage('videos')">🎥 動画活用</button>
-              <button onclick="loadPage('safety')">🛡️ 安全な使い方</button>
-              <button onclick="loadPage('contact')">📨 お問い合わせ</button>
-            </div>
-            <div id="mainContent" style="font-family:sans-serif;"></div>
-          `;
-          document.body.style.background = "#fff";
-          const script = document.createElement("script");
-          script.textContent = `
-            document.getElementById("menuToggle").onclick = () => {
-              const m = document.getElementById("menu");
-              m.style.display = m.style.display === "none" ? "block" : "none";
-            };
-            function loadPage(page) {
-              history.pushState({}, "", "/smartlearn/" + page);
-              const content = {
-                home: \`<div style="padding:2em;"><h2>🏠 ホーム</h2><p>SmartLearn.jp へようこそ。</p></div>\`,
-                materials: \`<h2>📚 教材一覧</h2><section><h3>中学数学：関数とグラフ</h3><p>関数の基本からグラフの描き方まで。</p></section>\`,
-                videos: \`<h2>🎥 動画活用</h2><ul><li>NHK for School</li><li>TED-Ed</li></ul>\`,
-                safety: \`<h2>🛡️ 安全な使い方</h2><ul><li>広告を避けるための工夫</li></ul>\`,
-                contact: \`<h2>📨 お問い合わせ</h2><p>SmartLearn.jp 教育支援チームまでご連絡ください。</p>\`
-              };
-              document.getElementById("mainContent").innerHTML = content[page] || "<p>ページが見つかりません。</p>";
-            }
-            loadPage("home");
-          `;
-          document.body.appendChild(script);
-        }
-      });
-    </script>
-    '''
-
     # 元の aka.py らしい飾らないHTML構造 [cite: 1]
     html = f'''
     <h2>🎬 再生中: {display_title}</h2>
@@ -260,6 +183,7 @@ def watch():
 # ─────────────────────────────────────────
 # /full メディア一覧 (外部動画は最新順・ローカルは名前順)
 # ─────────────────────────────────────────
+@app.route("/")
 @app.route("/full")
 def full():
     global access_count
@@ -336,7 +260,6 @@ def full():
         html_files = []
         text_files = []
 
-    # 4. classroomのアップロードファイル
     if os.path.exists(UPLOAD_DIR):
         for f in os.listdir(UPLOAD_DIR):
             ext = os.path.splitext(f)[1].lower()
@@ -382,12 +305,6 @@ def full():
       <input type="submit" value="表示">
 
     </form>
-
-
-    <h2>🔞⁉️youtubeをみることができます！！！</h2>
-    <a href="https://namanikuoisiibakaahoninngenn81019194545.serveousercontent.com/" target="_blank">
-      <button style="padding: 0.5em 1em; font-size: 1em;">🌐 遠隔ブラウザページへ</button>
-    </a>
 
     <h2>🌐 HTMLファイル一覧</h2>
     <form method="get" action="/view_html">
@@ -463,87 +380,6 @@ def full():
 # ─────────────────────────────────────────
 # 各種ファイル配信・表示
 # ─────────────────────────────────────────
-@app.route("/youarebaka", methods=["GET", "POST"])
-def youarebaka():
-    message = ""
-
-    # ユーザーがURLを送信（POST）してきたときの処理
-    if request.method == "POST":
-        url = request.form.get("url", "").strip()
-        if not url:
-            message = "❌ URLが空だぞ、しっかりしろ！"
-        else:
-            try:
-                import yt_dlp
-
-                # 保存先を MEDIA_DIR（ローカル動画フォルダ）に指定
-                ydl_opts = {
-                    'outtmpl': os.path.join(MEDIA_DIR, '%(title)s.%(ext)s'),
-                    # 学校で再生しやすいmp4を最優先で取得
-                    'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-                    # サーバーがフリーズしないようにタイムアウトを設定（15秒）
-                    'socket_timeout': 15,
-                }
-
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([url])
-
-                message = "🎉 【大成功】動画の吸い出しが完了したぞ！<br>学校のフィルターを完全無力化しました。すでに <b>/full</b> のローカル動画一覧に名前順で追加されています。"
-
-            except Exception as e:
-                # エラーが出た場合、無料プランの制限の可能性が高いので親切に案内
-                message = f'''❌ <b>吸い出しエラー発生:</b> <code style="color:#ff6b6b;">{e}</code><br><br>
-                <b>【開発者へのヒント】</b><br>
-                もしPythonAnywhereの「無料プラン」を使っている場合、外部通信制限のせいでサーバーが直接YouTubeに繋げず弾かれている可能性が高いです。<br>
-                その場合は、自分のPCで動画（.mp4）をダウンロードして、OneDrive経由か、PythonAnywhereのファイル画面から直接 <code>static</code> や <code>media</code> フォルダにぶち込んでください。それだけで学校の規制は突破できます！'''
-
-    # 画面（GETアクセス時、または処理後）のHTML
-    html = r'''
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <title>🛠️ 秘密の隠しルート (/youarebaka)</title>
-        <style>
-            body { background: #111; color: #0f0; font-family: 'Courier New', monospace; padding: 40px 20px; text-align: center; }
-            .developer-box { border: 2px solid #0f0; padding: 30px; max-width: 650px; margin: 0 auto; background: #000; box-shadow: 0 0 15px #0f0; }
-            h2 { margin-top: 0; font-size: 24px; text-shadow: 0 0 5px #0f0; }
-            input[type="text"] { width: 80%; padding: 12px; background: #222; color: #0f0; border: 1px solid #0f0; font-size: 16px; margin-bottom: 15px; }
-            input[type="submit"] { padding: 12px 30px; background: #0f0; color: #000; border: none; cursor: pointer; font-weight: bold; font-size: 16px; }
-            input[type="submit"]:hover { background: #fff; color: #000; }
-            .console-log { margin-top: 25px; padding: 15px; border: 1px dashed #0f0; background: #001100; text-align: left; line-height: 1.5; font-size: 14px; }
-            .links { margin-top: 30px; }
-            a { color: #0ff; text-decoration: none; margin: 0 10px; }
-            a:hover { text-decoration: underline; }
-        </style>
-    </head>
-    <body>
-        <div class="developer-box">
-            <h2>🛠️ 規制突破用・動画自動吸い出しシステム</h2>
-            <p>ここにYouTubeのURLを入力すると、裏でFlaskが「身代わり」になって動画をmp4としてサーバーに強制ダウンロードします。<br>
-            （生徒のブラウザからは、ただのあなたのサイトの動画に見えるため、学校のブロックに引っかかりません）</p>
-            <br>
-
-            <form method="post">
-                <input type="text" name="url" placeholder="https://www.youtube.com/watch?v=..." required><br>
-                <input type="submit" value="⚡ サーバー側で吸い出しを実行">
-            </form>
-
-            {% if message %}
-                <div class="console-log">
-                    {{ message | safe }}
-                </div>
-            {% endif %}
-
-            <div class="links">
-                <a href="/full">🔙 メディア一覧（/full）へ</a> |
-                <a href="/">🏠 ホーム画面へ</a>
-            </div>
-        </div>
-    </body>
-    </html>
-    '''
-    return render_template_string(html, message=message)
 
 @app.route("/play")
 def play():
@@ -698,7 +534,7 @@ def novel_read():
     return render_template_string(html, filename=filename, content=content)
 
 # ─────────────────────────────────────────
-# /classroom
+# /ビルドビ
 # ─────────────────────────────────────────
 @app.route("/classroom", methods=["GET", "POST"])
 def classroom_page():
