@@ -71,6 +71,35 @@
     .ds-btn { background: #1a1a2e; color: #00bcd4; border: 2px solid #00bcd4; padding: 4px 10px; border-radius: 10px; cursor: pointer; font-size: 0.8em; font-weight: bold; }
     .ds-btn.active { background: #00bcd4; color: #fff; }
     .reported-msg { background: #ffe4e8; color: #d32f2f; padding: 8px 12px; border-radius: 6px; font-size: 0.85em; font-weight: bold; border-left: 4px solid #d32f2f; }
+
+    /* 年齢確認モーダル */
+    #age-overlay { display:none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.8); z-index: 10001; justify-content:center; align-items:center; }
+    .age-container { width: 340px; background:#1a000a; border:2px solid #ff4081; padding:25px; border-radius:12px; text-align:center; color:#fff; }
+    .age-container h3 { margin-top:0; color:#ff4081; }
+    .age-container input[type="date"] { width:100%; padding:8px; border-radius:6px; border:1px solid #ff4081; background:#fff; margin:10px 0; box-sizing:border-box; }
+    .age-btn-yes { width:100%; padding:10px; background:#ff4081; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer; margin-top:8px; }
+    .age-btn-no { width:100%; padding:8px; background:transparent; color:#aaa; border:1px solid #555; border-radius:6px; cursor:pointer; margin-top:8px; }
+    #age-err { color:#ff8a80; font-size:0.8em; min-height:1.2em; margin-top:6px; }
+
+    /* 設定モーダル */
+    #settings-overlay { display:none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.7); z-index: 10000; justify-content:center; align-items:center; }
+    .settings-container { width: 360px; background:#fff; padding:25px; border-radius:12px; position:relative; }
+    .settings-row { display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid #eee; }
+    .settings-row label { font-weight:bold; font-size:0.9em; display:flex; align-items:center; gap:8px; cursor:pointer; }
+    .switch { position:relative; display:inline-block; width:44px; height:24px; flex-shrink:0; }
+    .switch input { opacity:0; width:0; height:0; }
+    .slider { position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background:#ccc; border-radius:24px; transition:0.2s; }
+    .slider:before { position:absolute; content:""; height:18px; width:18px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:0.2s; }
+    .switch input:checked + .slider { background:#ff4081; }
+    .switch input:checked + .slider:before { transform: translateX(20px); }
+    .switch input:disabled + .slider { opacity:0.4; cursor:not-allowed; }
+    #r18-minor-msg { display:none; color:#d32f2f; font-size:0.8em; font-weight:bold; background:#ffe4e8; padding:8px 10px; border-radius:6px; margin-top:8px; border-left:4px solid #d32f2f; }
+
+    /* テキスト本文用の規制カバー */
+    .text-cover { padding:14px 12px; border-radius:8px; cursor:pointer; font-weight:bold; margin:5px 0; display:flex; flex-direction:column; gap:4px; transition:0.2s; }
+    .text-cover span.sub { font-size:0.75em; font-weight:normal; }
+
+    /* ギャラリー用ロックオーバーレイは廃止（設定トグルで中身のR18のみ出し分ける） */
   </style>
 </head>
 <body>
@@ -78,11 +107,12 @@
 <div class="top-bar">
   <a href="/full" style="padding:4px 10px; background:#fff; border:2px solid #aaa; border-radius:10px; color:#666; font-size:0.8em; font-weight:bold; text-decoration:none;">← 戻る</a>
   <button class="ds-btn" id="ds-toggle-btn" onclick="toggleDS()">🎮 3DSモード</button>
+  <button id="settings-btn" class="ds-btn" onclick="openSettings()" style="display:none;">⚙️ 設定</button>
   <span style="font-size:0.8em; color:#888;" id="ds-status"></span>
   <div class="thread-tabs" id="thread-tabs-container"></div>
   <button id="create-thread-btn" class="create-thread-btn" onclick="createThread()" style="display: none;">➕ スレ作成</button>
   <div class="search-box">
-    <input type="text" id="post-search" placeholder="🔍 投稿を検索..." oninput="filterPosts()">
+    <input type="text" id="post-search" placeholder="🔍 投稿を検索..." autocomplete="off" oninput="filterPosts()">
   </div>
 </div>
 
@@ -127,6 +157,46 @@
     </div>
     <p id="icon-err" style="color:red; font-size:0.85em; min-height:1.2em; margin-top:8px;"></p>
     <button onclick="doChangeIcon()" style="width:100%; padding:12px; background:#00bcd4; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; margin-top:10px;">変更する</button>
+  </div>
+</div>
+
+<div id="settings-overlay">
+  <div class="settings-container">
+    <span style="position:absolute; top:10px; right:15px; cursor:pointer; font-size:1.5em;" onclick="closeSettings()">×</span>
+    <h3 style="margin-top:0; border-bottom:2px solid #00bcd4; padding-bottom:8px;">⚙️ 設定</h3>
+    <div class="settings-row">
+      <label for="r18-toggle">🔞 R18コンテンツを表示する</label>
+      <label class="switch">
+        <input type="checkbox" id="r18-toggle" onchange="onR18ToggleChange(this)">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <p id="r18-minor-msg">18歳未満と確認されたため、18歳になるまでこの機能はご利用いただけません。</p>
+
+    <div class="settings-row" style="flex-direction:column; align-items:flex-start; border-bottom:none; margin-top:10px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+        <label style="color:#d32f2f;">🗑 アカウントを削除する</label>
+        <button onclick="openDeleteConfirm()" style="padding:6px 14px; background:#fff; border:2px solid #d32f2f; color:#d32f2f; border-radius:15px; font-weight:bold; cursor:pointer; font-size:0.8em;">削除</button>
+      </div>
+      <div id="del-account-confirm-area" style="display:none; width:100%; margin-top:10px; padding:12px; background:#fff5f5; border:1px solid #ffcdd2; border-radius:8px; box-sizing:border-box;">
+        <p style="font-size:0.8em; color:#d32f2f; font-weight:bold; margin:0 0 8px;">この操作は取り消せません。投稿・アイコンなどのデータもすべて削除されます。</p>
+        <p style="font-size:0.75em; color:#555; margin:0 0 6px;">確認のため、ユーザー名「<b id="del-account-uname"></b>」を入力してください。</p>
+        <input type="text" id="del-account-input" autocomplete="off" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:6px; box-sizing:border-box; margin-bottom:8px;">
+        <p id="del-account-err" style="color:#d32f2f; font-size:0.75em; min-height:1.1em;"></p>
+        <button onclick="confirmDeleteAccount()" style="width:100%; padding:10px; background:#d32f2f; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">完全に削除する</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="age-overlay">
+  <div class="age-container">
+    <h3>🔞 年齢確認</h3>
+    <p style="font-size:0.85em; color:#eee;">この先には18歳未満の閲覧が適さないコンテンツが含まれます。生年月日を入力して、18歳以上であることを確認してください。</p>
+    <input type="date" id="age-birthdate">
+    <p id="age-err"></p>
+    <button class="age-btn-yes" onclick="submitAgeVerify()">確認して閲覧する</button>
+    <button class="age-btn-no" onclick="closeAgeModal()">やめる</button>
   </div>
 </div>
 
@@ -228,6 +298,8 @@
     var isLoggedIn = (SID && SID !== "None" && SID !== "");
     var createBtn = document.getElementById('create-thread-btn');
     if (createBtn) createBtn.style.display = isLoggedIn ? 'inline-block' : 'none';
+    var settingsBtn = document.getElementById('settings-btn');
+    if (settingsBtn) settingsBtn.style.display = isLoggedIn ? 'inline-block' : 'none';
   }
 
   function getCustomThreads() { try { return JSON.parse(localStorage.getItem('custom_threads') || '[]'); } catch(e) { return []; } }
@@ -237,9 +309,20 @@
     var html = '';
     threads.forEach(function(t) {
       var isActive = (currentThread === t) ? 'active' : '';
-      html += '<div class="thread-tab ' + isActive + '" onclick="switchThread(\'' + t.replace(/'/g, "\\'") + '\', this)">💬 ' + t + '</div>';
+      var safe = t.replace(/'/g, "\\'");
+      html += '<div class="thread-tab ' + isActive + '" style="display:inline-flex; align-items:center; gap:6px;">'
+        + '<span onclick="switchThread(\'' + safe + '\', this)" style="cursor:pointer;">💬 ' + t + '</span>'
+        + '<span onclick="removeThread(\'' + safe + '\')" title="このスレッドを削除" style="cursor:pointer; opacity:0.7; font-weight:bold;">×</span>'
+        + '</div>';
     });
     container.innerHTML = html;
+  }
+  function removeThread(thread) {
+    if (!confirm('スレッド「' + thread + '」を削除しますか？（投稿自体は削除されません）')) return;
+    var threads = getCustomThreads().filter(function(t) { return t !== thread; });
+    try { localStorage.setItem('custom_threads', JSON.stringify(threads)); } catch(e) {}
+    if (currentThread === thread) { currentThread = ''; document.getElementById('post-thread-input').value = ''; }
+    renderThreadTabs(); filterPosts();
   }
 
   function createThread() {
@@ -331,6 +414,110 @@
   function openModal() { swM('register'); loadTerms(); document.getElementById('login-overlay').style.display = 'flex'; }
   function closeModal() { document.getElementById('login-overlay').style.display = 'none'; }
   function checkLog() { if(!SID || SID === "None" || SID === "") { openModal(); return false; } return true; }
+
+  // ===== 年齢確認 (R18ゲート) =====
+  // ログイン中ユーザーごとに確認結果を保存（同一ブラウザの別ユーザーが確認済み扱いにならないように）
+  var pendingAgeCallback = null;
+  function adultKey() { return 'age_adult_' + (CURRENT_USER || 'guest'); }
+  function minorKey() { return 'age_minor_' + (CURRENT_USER || 'guest'); }
+  function r18SettingKey() { return 'r18_display_' + (CURRENT_USER || 'guest'); }
+  function isConfirmedAdult() { try { return localStorage.getItem(adultKey()) === 'true'; } catch(e) { return false; } }
+  function isConfirmedMinor() { try { return localStorage.getItem(minorKey()) === 'true'; } catch(e) { return false; } }
+  // フィードやギャラリーでR18を実際に表示するかどうかは、この設定トグルで一元管理する
+  // （設定がONになるのは年齢確認で成人と確認できた場合のみ）
+  function isR18DisplayEnabled() { try { return localStorage.getItem(r18SettingKey()) === 'true'; } catch(e) { return false; } }
+
+  function requestAgeVerify(callback) {
+    if (isConfirmedAdult()) { callback(); return; }
+    pendingAgeCallback = callback;
+    document.getElementById('age-birthdate').value = '';
+    document.getElementById('age-err').textContent = '';
+    document.getElementById('age-overlay').style.display = 'flex';
+  }
+  function closeAgeModal() { document.getElementById('age-overlay').style.display = 'none'; pendingAgeCallback = null; }
+  function submitAgeVerify() {
+    var v = document.getElementById('age-birthdate').value;
+    var errEl = document.getElementById('age-err');
+    if (!v) { errEl.textContent = '生年月日を入力してください'; return; }
+    var b = new Date(v);
+    if (isNaN(b.getTime())) { errEl.textContent = '日付が正しくありません'; return; }
+    var today = new Date();
+    var age = today.getFullYear() - b.getFullYear();
+    var m = today.getMonth() - b.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
+    document.getElementById('age-overlay').style.display = 'none';
+    if (age < 18) {
+      try { localStorage.setItem(minorKey(), 'true'); } catch(e) {}
+      try { localStorage.setItem(r18SettingKey(), 'false'); } catch(e) {}
+      pendingAgeCallback = null;
+      reflectR18SettingUI();
+      return;
+    }
+    try { localStorage.setItem(adultKey(), 'true'); } catch(e) {}
+    var cb = pendingAgeCallback; pendingAgeCallback = null;
+    if (cb) cb();
+  }
+
+  // ===== 設定 (R18表示トグル) =====
+  function openSettings() {
+    if (!checkLog()) return;
+    reflectR18SettingUI();
+    var delArea = document.getElementById('del-account-confirm-area'); if (delArea) delArea.style.display = 'none';
+    document.getElementById('settings-overlay').style.display = 'flex';
+  }
+  function closeSettings() { document.getElementById('settings-overlay').style.display = 'none'; }
+  function reflectR18SettingUI() {
+    var cb = document.getElementById('r18-toggle'); var msg = document.getElementById('r18-minor-msg');
+    if (!cb) return;
+    if (isConfirmedMinor()) {
+      cb.checked = false; cb.disabled = true; msg.style.display = 'block';
+    } else {
+      cb.checked = isR18DisplayEnabled(); cb.disabled = false; msg.style.display = 'none';
+    }
+  }
+  function onR18ToggleChange(cb) {
+    if (cb.checked) {
+      cb.checked = false; // 確認できるまでは一旦戻しておく
+      requestAgeVerify(function() {
+        try { localStorage.setItem(r18SettingKey(), 'true'); } catch(e) {}
+        reflectR18SettingUI();
+        load();
+      });
+    } else {
+      try { localStorage.setItem(r18SettingKey(), 'false'); } catch(e) {}
+      load();
+    }
+  }
+
+  // ===== アカウント削除 =====
+  function openDeleteConfirm() {
+    if (!checkLog()) return;
+    document.getElementById('del-account-uname').textContent = CURRENT_USER;
+    document.getElementById('del-account-input').value = '';
+    document.getElementById('del-account-err').textContent = '';
+    document.getElementById('del-account-confirm-area').style.display = 'block';
+  }
+  function confirmDeleteAccount() {
+    var v = document.getElementById('del-account-input').value.trim();
+    var errEl = document.getElementById('del-account-err');
+    if (v !== CURRENT_USER) { errEl.textContent = 'ユーザー名が一致しません。'; return; }
+    var fd = new FormData(); fd.append('action_type', 'delete_account'); fd.append('sid', SID);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/buildvi', true);
+    xhr.onload = function() {
+      try {
+        var data = JSON.parse(xhr.responseText);
+        if (data.status === 'ok') {
+          try { localStorage.clear(); } catch(e) {}
+          alert('アカウントを削除しました。');
+          location.href = '/buildvi';
+        } else {
+          errEl.textContent = 'エラー: ' + (data.error || '削除に失敗しました');
+        }
+      } catch(e) { errEl.textContent = '通信エラーが発生しました'; }
+    };
+    xhr.onerror = function() { errEl.textContent = '通信エラーが発生しました'; };
+    xhr.send(fd);
+  }
 
   function openIconModal() {
     if (!checkLog()) return;
@@ -481,8 +668,10 @@
     // 規制フラグの判定 (r18 / sensitive / spoiler)
     var restriction = p.content_restriction || (p.is_r18 === true || p.is_r18 === "true" || p.is_r18 === "on" ? "r18" : "none");
 
-    // 【要件適用】ギャラリーには「実際に投稿に添付されているファイル」かつ「R18指定のないメディア」のみを追加
-    if (p.file && !isRep && restriction !== "r18") {
+    // ギャラリーには「実際に投稿に添付されているファイル」を追加する
+    // （R18投稿自体が isR18DisplayEnabled() に応じて load() の時点で除外されるため、
+    //   ここでは特別な判定をしなくても自動的にR18ファイルだけ出し分けられる）
+    if (p.file && !isRep) {
       appendGalleryItem(gDiv, { save_name: p.file.save_name, type: p.file.type, ext: p.file.ext, url: url }, 'by ' + p.user);
     }
 
@@ -498,7 +687,32 @@
     if (isReported && !isApproved) {
       var repMsg = document.createElement('div'); repMsg.className = 'reported-msg'; repMsg.innerText = '⚠️ この投稿は通報されたため、管理者の認証を受けるまで本文を一時隠蔽しています。'; body.appendChild(repMsg);
     } else {
-      var msg = document.createElement('p'); msg.style.cssText = "margin:5px 0; line-height:1.5;"; msg.textContent = p.message || ''; body.appendChild(msg);
+      var buildMsg = function() {
+        var m = document.createElement('p'); m.style.cssText = "margin:5px 0; line-height:1.5;"; m.textContent = p.message || ''; return m;
+      };
+
+      if (p.message && restriction !== "none") {
+        var textWrapper = document.createElement('div'); textWrapper.style.marginTop = "5px";
+        var tCover = document.createElement('div');
+        var revealText = function() { textWrapper.innerHTML = ''; textWrapper.appendChild(buildMsg()); };
+        if (restriction === "r18") {
+          tCover.className = "content-cover r18-cover text-cover";
+          tCover.innerHTML = '<span>🔞 R18指定 (本文にポルノ/18禁描写を含みます)</span><span class="sub">クリックして年齢確認の上表示</span>';
+          tCover.onclick = function() { requestAgeVerify(revealText); };
+        } else if (restriction === "sensitive") {
+          tCover.className = "content-cover sensitive-cover text-cover";
+          tCover.innerHTML = '<span>⚠️ 閲覧注意 (本文)</span><span class="sub">クリックして表示</span>';
+          tCover.onclick = revealText;
+        } else if (restriction === "spoiler") {
+          tCover.className = "content-cover spoiler-cover text-cover";
+          tCover.innerHTML = '<span>🙈 ネタバレを含む本文です</span><span class="sub">クリックして開く</span>';
+          tCover.onclick = revealText;
+        }
+        textWrapper.appendChild(tCover);
+        body.appendChild(textWrapper);
+      } else {
+        body.appendChild(buildMsg());
+      }
 
       var ytHtml = getYT(p.message);
       if (ytHtml) { var ytDiv = document.createElement('div'); ytDiv.innerHTML = ytHtml; body.appendChild(ytDiv); }
@@ -529,8 +743,8 @@
         // オプションに応じた遮蔽ワンクッションカバーの生成
         if (restriction === "r18") {
           var cover = document.createElement('div'); cover.className = "content-cover r18-cover";
-          cover.innerHTML = '<span>🔞 R18指定 (ポルノ規制メディア)</span><span style="font-size:0.75em; color:#ccc;">クリックして表示</span>';
-          cover.onclick = function() { mediaWrapper.innerHTML = ''; mediaWrapper.appendChild(buildMedia()); };
+          cover.innerHTML = '<span>🔞 R18指定 (ポルノ規制メディア)</span><span style="font-size:0.75em; color:#ccc;">クリックして年齢確認の上表示</span>';
+          cover.onclick = function() { requestAgeVerify(function() { mediaWrapper.innerHTML = ''; mediaWrapper.appendChild(buildMedia()); }); };
           mediaWrapper.appendChild(cover);
         } else if (restriction === "sensitive") {
           var cover = document.createElement('div'); cover.className = "content-cover sensitive-cover";
@@ -562,6 +776,7 @@
 
   function load() {
     updateUIVisibility(); renderThreadTabs();
+    var searchBox = document.getElementById('post-search'); if (searchBox) searchBox.value = '';
     var xhr1 = new XMLHttpRequest(); xhr1.open('GET', '/buildvi?get_type=json', true);
     xhr1.onload = function() {
       var data; try { data = JSON.parse(xhr1.responseText); } catch(e) { return; }
@@ -576,6 +791,16 @@
       }
 
       var posts = data.all.filter(function(p) { return p.type !== "user"; });
+
+      // 「R18を表示する」設定がOFFのユーザーには、R18投稿そのものを一覧から除外する
+      var isR18Post = function(p) {
+        var r = p.content_restriction || (p.is_r18 === true || p.is_r18 === "true" || p.is_r18 === "on" ? "r18" : "none");
+        return r === "r18";
+      };
+      if (!isR18DisplayEnabled()) {
+        posts = posts.filter(function(p) { return !isR18Post(p); });
+      }
+
       var parents = posts.filter(function(p) { return !p.reply_to; }); var replies = posts.filter(function(p) { return p.reply_to; });
       var reversed = parents.slice().reverse();
 
