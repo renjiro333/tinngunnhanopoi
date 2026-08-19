@@ -344,7 +344,7 @@
     var file = document.getElementById('icon-change-file').files[0]; var errEl = document.getElementById('icon-err');
     if (!file) { errEl.textContent = 'ファイルを選んでください'; return; }
     var fd = new FormData(); fd.append('action_type', 'change_icon'); fd.append('sid', SID); fd.append('icon', file);
-    var xhr = new XMLHttpRequest(); xhr.open('POST', '/classroom', true);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/buildvi', true);
     xhr.onload = function() {
       try {
         var data = JSON.parse(xhr.responseText);
@@ -379,14 +379,14 @@
       if (!agreed) { errEl.textContent = "利用規約を最後まで読み、同意してください"; return; }
       fd.append("password", pass); fd.append("icon", iconFile);
     }
-    var xhr = new XMLHttpRequest(); xhr.open('POST', '/classroom', true);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/buildvi', true);
     xhr.onload = function() {
       try {
         var data = JSON.parse(xhr.responseText);
         if (data.status === "ok") {
           SID = data.sid; CURRENT_USER = name;
           document.getElementById('sid-input').value = SID; document.getElementById('disp-username').textContent = name;
-          if (history.replaceState) history.replaceState({}, "", "/classroom?sid=" + SID);
+          if (history.replaceState) history.replaceState({}, "", "/buildvi?sid=" + SID);
           document.getElementById('login-btn-area').innerHTML = '<img src="/static/icons/' + (data.icon || 'default.png') + '" class="current-user-icon" title="' + name + ' (クリックでアイコン変更)" onclick="openIconModal()" onerror="this.src=\'/static/icons/default.png\'">';
           closeModal(); load();
         } else errEl.textContent = "エラー: " + (data.error || "失敗しました");
@@ -406,7 +406,7 @@
     isPosting = true; const submitBtn = document.getElementById('submit-btn'); const originalText = submitBtn.textContent;
     submitBtn.disabled = true; submitBtn.textContent = "投稿中...";
     var form = document.getElementById('post-form'); var fd = new FormData(form); fd.set('sid', SID);
-    var xhr = new XMLHttpRequest(); xhr.open('POST', '/classroom', true);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/buildvi', true);
     xhr.onload = function() {
       isPosting = false; submitBtn.disabled = false; submitBtn.textContent = originalText;
       if (xhr.status === 200) {
@@ -426,7 +426,7 @@
   function delP(id) {
     if(!confirm("この投稿を削除しますか？")) return;
     var fd = new FormData(); fd.append("action_type", "delete"); fd.append("sid", SID); fd.append("post_id", id);
-    var xhr = new XMLHttpRequest(); xhr.open('POST', '/classroom', true); xhr.onload = function() { load(); }; xhr.send(fd);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/buildvi', true); xhr.onload = function() { load(); }; xhr.send(fd);
   }
 
   function doL(id) {
@@ -562,7 +562,7 @@
 
   function load() {
     updateUIVisibility(); renderThreadTabs();
-    var xhr1 = new XMLHttpRequest(); xhr1.open('GET', '/classroom?get_type=json', true);
+    var xhr1 = new XMLHttpRequest(); xhr1.open('GET', '/buildvi?get_type=json', true);
     xhr1.onload = function() {
       var data; try { data = JSON.parse(xhr1.responseText); } catch(e) { return; }
       var lk; try { lk = JSON.parse(localStorage.getItem('lk') || '[]'); } catch(e) { lk = []; }
