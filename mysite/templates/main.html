@@ -124,9 +124,10 @@
       <div id="mt-reg" style="flex:1; text-align:center; padding:8px; cursor:pointer; font-weight:bold; color:#00bcd4;" onclick="swM('register')">初めて</div>
       <div id="mt-log" style="flex:1; text-align:center; padding:8px; cursor:pointer; font-weight:bold; color:#888;" onclick="swM('login')">登録済み</div>
     </div>
-    <input type="text" id="login-username" placeholder="名前を入力" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; margin-bottom:10px;">
+    <form id="auth-form" onsubmit="event.preventDefault(); doLogin(); return false;">
+    <input type="text" id="login-username" name="username" autocomplete="username" placeholder="名前を入力" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; margin-bottom:10px;">
     <div id="mi-sect">
-      <input type="password" id="login-password" placeholder="パスワードを設定" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; margin-bottom:10px;">
+      <input type="password" id="login-password" name="password" autocomplete="new-password" placeholder="パスワードを設定" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; margin-bottom:10px;">
       <label class="custom-file-btn">
         <input type="file" id="login-icon-file" accept="image/*" onchange="upName(this,'mn-icon')">アイコン選択 (画像全般)
       </label>
@@ -141,7 +142,8 @@
       </div>
     </div>
     <p id="login-err" style="color:red; font-size:0.85em; min-height:1.2em; margin-top:8px;"></p>
-    <button onclick="doLogin()" style="width:100%; padding:12px; background:#00bcd4; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; margin-top:5px;">入室する</button>
+    <button type="submit" style="width:100%; padding:12px; background:#00bcd4; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; margin-top:5px;">入室する</button>
+    </form>
   </div>
 </div>
 
@@ -286,6 +288,25 @@
 </div>
 
 <script>
+  // ユーザー入力（投稿本文・ユーザー名・ファイル名など）をinnerHTMLに差し込む前に
+  // 必ずこの関数を通し、<script>タグ等が実行されないようにする（格納型XSS対策）
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+  // onclick="...'+val+'..." のように、HTML属性内のJS文字列リテラルへ
+  // ユーザー入力（ユーザー名など）を埋め込む場合は、JS文字列としての
+  // エスケープとHTML属性としてのエスケープの両方が必要
+  function escForOnclick(s) {
+    var v = String(s == null ? '' : s);
+    v = v.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    v = v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return v;
+  }
   var SID = "{{ sid or '' }}";
   var CURRENT_USER = "{{ username }}";
   var _curMode = 'register';
@@ -368,13 +389,23 @@
 
   function getReportedPosts() { try { return JSON.parse(localStorage.getItem('reported_posts') || '{}'); } catch(e) { return {}; } }
   function reportPost(postId, isApproved) {
+    if (!checkLog()) return;
     if (isApproved) { alert("この投稿は管理者認証済みのため隠蔽されません。"); return; }
     var reason = prompt("通報理由を入力してください:");
     if (!reason) return;
-    var reported = getReportedPosts();
-    reported[postId] = { reason: reason, time: new Date().toISOString() };
-    try { localStorage.setItem('reported_posts', JSON.stringify(reported)); } catch(e) {}
-    alert("通報を受理しました。管理者の認証を受けるまで本文は一時隠蔽されます。"); load();
+    var fd = new FormData(); fd.append("sid", SID); fd.append("post_id", postId); fd.append("reason", reason);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/report_post', true);
+    xhr.onload = function() {
+      try {
+        var data = JSON.parse(xhr.responseText);
+        if (data.status === "ok") {
+          if (data.already_approved) alert("この投稿は管理者認証済みのため隠蔽されません。");
+          else alert("通報を受理しました。管理者の認証を受けるまで本文は一時隠蔽されます。");
+          load();
+        } else alert("エラー: " + (data.error || "通報に失敗しました"));
+      } catch(e) { alert("通信エラーが発生しました"); }
+    };
+    xhr.send(fd);
   }
 
   function openDM(targetUser) {
@@ -384,25 +415,55 @@
     renderDMLog(); document.getElementById('dm-modal').style.display = 'flex';
   }
   function closeDM() { document.getElementById('dm-modal').style.display = 'none'; }
-  function getDMs() { try { return JSON.parse(localStorage.getItem('dm_logs') || '{}'); } catch(e) { return {}; } }
+
+  function reportDMMessage(messageId, target) {
+    var reason = prompt("この人からのメッセージを通報する理由を入力してください:");
+    if (!reason) return;
+    var fd = new FormData(); fd.append("sid", SID); fd.append("target", target); fd.append("message_id", messageId); fd.append("reason", reason);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/report_dm', true);
+    xhr.onload = function() {
+      try {
+        var data = JSON.parse(xhr.responseText);
+        if (data.status === "ok") alert("通報しました。通報時に選択したメッセージのみが管理者に送られます（DM全体は見られません）。");
+        else alert("エラー: " + (data.error || "通報に失敗しました"));
+      } catch(e) { alert("通信エラーが発生しました"); }
+    };
+    xhr.send(fd);
+  }
+
   function renderDMLog() {
-    var dms = getDMs(); var pairKey = [CURRENT_USER, activeDMTarget].sort().join('::'); var logs = dms[pairKey] || [];
-    var logDiv = document.getElementById('dm-chat-log'); logDiv.innerHTML = '';
-    logs.forEach(function(msg) {
-      var p = document.createElement('div');
-      p.style.cssText = "margin-bottom:8px; text-align:" + (msg.sender === CURRENT_USER ? "right" : "left") + ";";
-      p.innerHTML = '<span style="font-size:0.7em; color:#888;">' + msg.sender + '</span><br><span style="display:inline-block; padding:6px 12px; border-radius:10px; font-size:0.85em; background:' + (msg.sender === CURRENT_USER ? '#00bcd4; color:#fff;' : '#e0e0e0; color:#333;') + '">' + msg.text + '</span>';
-      logDiv.appendChild(p);
-    });
-    logDiv.scrollTop = logDiv.scrollHeight;
+    var logDiv = document.getElementById('dm-chat-log'); logDiv.innerHTML = '<p class="empty" style="color:#999; font-size:0.85em;">読み込み中...</p>';
+    var xhr = new XMLHttpRequest(); xhr.open('GET', '/dm/list?sid=' + encodeURIComponent(SID) + '&target=' + encodeURIComponent(activeDMTarget), true);
+    xhr.onload = function() {
+      var data; try { data = JSON.parse(xhr.responseText); } catch(e) { logDiv.innerHTML = ''; return; }
+      logDiv.innerHTML = '';
+      if (data.status !== "ok") { logDiv.innerHTML = '<p style="color:#e53935; font-size:0.85em;">' + escapeHtml(data.error || '読み込みに失敗しました') + '</p>'; return; }
+      (data.messages || []).forEach(function(msg) {
+        var p = document.createElement('div');
+        var isMine = (msg.sender === CURRENT_USER);
+        p.style.cssText = "margin-bottom:8px; text-align:" + (isMine ? "right" : "left") + ";";
+        var reportBtn = isMine ? '' : ' <span style="font-size:0.65em; color:#ff9800; cursor:pointer;" onclick="reportDMMessage(\'' + escForOnclick(msg.id) + '\',\'' + escForOnclick(activeDMTarget) + '\')">🚨通報</span>';
+        p.innerHTML = '<span style="font-size:0.7em; color:#888;">' + escapeHtml(msg.sender) + reportBtn + '</span><br><span style="display:inline-block; padding:6px 12px; border-radius:10px; font-size:0.85em; background:' + (isMine ? '#00bcd4; color:#fff;' : '#e0e0e0; color:#333;') + '">' + escapeHtml(msg.text) + '</span>';
+        logDiv.appendChild(p);
+      });
+      logDiv.scrollTop = logDiv.scrollHeight;
+    };
+    xhr.send();
   }
   function sendDM() {
     var inp = document.getElementById('dm-input'); var text = inp.value.trim(); if (!text) return;
-    var dms = getDMs(); var pairKey = [CURRENT_USER, activeDMTarget].sort().join('::');
-    if (!dms[pairKey]) dms[pairKey] = [];
-    dms[pairKey].push({ sender: CURRENT_USER, text: text, time: new Date().toISOString() });
-    try { localStorage.setItem('dm_logs', JSON.stringify(dms)); } catch(e) {}
-    inp.value = ''; renderDMLog();
+    inp.disabled = true;
+    var fd = new FormData(); fd.append("sid", SID); fd.append("target", activeDMTarget); fd.append("text", text);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/dm/send', true);
+    xhr.onload = function() {
+      inp.disabled = false;
+      try {
+        var data = JSON.parse(xhr.responseText);
+        if (data.status === "ok") { inp.value = ''; renderDMLog(); }
+        else alert("エラー: " + (data.error || "送信に失敗しました"));
+      } catch(e) { alert("通信エラーが発生しました"); }
+    };
+    xhr.send(fd);
   }
 
   function toggleDS() {
@@ -550,6 +611,7 @@
     document.getElementById('mt-reg').style.color = isR ? '#00bcd4' : '#888';
     document.getElementById('mt-log').style.color = isR ? '#888' : '#00bcd4';
     document.getElementById('dynamic-title').innerText = isR ? "新規登録" : "ログイン";
+    document.getElementById('login-password').autocomplete = isR ? 'new-password' : 'current-password';
   }
 
   function upName(input, targetId) { document.getElementById(targetId).innerText = input.files.length > 0 ? input.files[0].name : ""; }
@@ -559,12 +621,16 @@
     var name = document.getElementById('login-username').value.trim(); var errEl = document.getElementById('login-err'); errEl.textContent = "";
     if (!name) { errEl.textContent = "名前を入力してください"; return; }
     var fd = new FormData(); fd.append("action_type", _curMode); fd.append("mode", _curMode); fd.append("username", name);
+    var pass = document.getElementById('login-password').value.trim();
     if (_curMode === "register") {
-      var pass = document.getElementById('login-password').value.trim(); var iconFile = document.getElementById('login-icon-file').files[0]; var agreed = document.getElementById('terms-check').checked;
+      var iconFile = document.getElementById('login-icon-file').files[0]; var agreed = document.getElementById('terms-check').checked;
       if (!pass) { errEl.textContent = "パスワードを設定してください"; return; }
       if (!iconFile) { errEl.textContent = "アイコン画像を選んでください"; return; }
       if (!agreed) { errEl.textContent = "利用規約を最後まで読み、同意してください"; return; }
       fd.append("password", pass); fd.append("icon", iconFile);
+    } else {
+      if (!pass) { errEl.textContent = "パスワードを入力してください"; return; }
+      fd.append("password", pass);
     }
     var xhr = new XMLHttpRequest(); xhr.open('POST', '/buildvi', true);
     xhr.onload = function() {
@@ -574,9 +640,14 @@
           SID = data.sid; CURRENT_USER = name;
           document.getElementById('sid-input').value = SID; document.getElementById('disp-username').textContent = name;
           if (history.replaceState) history.replaceState({}, "", "/buildvi?sid=" + SID);
-          document.getElementById('login-btn-area').innerHTML = '<img src="/static/icons/' + (data.icon || 'default.png') + '" class="current-user-icon" title="' + name + ' (クリックでアイコン変更)" onclick="openIconModal()" onerror="this.src=\'/static/icons/default.png\'">';
+          document.getElementById('login-btn-area').innerHTML = '<img src="/static/icons/' + escapeHtml(data.icon || 'default.png') + '" class="current-user-icon" title="' + escapeHtml(name) + ' (クリックでアイコン変更)" onclick="openIconModal()" onerror="this.src=\'/static/icons/default.png\'">';
           closeModal(); load();
-        } else errEl.textContent = "エラー: " + (data.error || "失敗しました");
+        } else {
+          if (data.account_deleted) {
+            alert("📩 " + data.error + "\n(本来はここでアカウント削除のお知らせメールをお送りする想定ですが、このアプリにはメール送信の仕組みがないため、この画面でお知らせしています)");
+          }
+          errEl.textContent = "エラー: " + (data.error || "失敗しました");
+        }
       } catch(e) { errEl.textContent = "通信エラーが発生しました"; }
     }; xhr.send(fd);
   }
@@ -618,11 +689,12 @@
 
   function doL(id) {
     if(!checkLog()) return;
-    var l; try { l = JSON.parse(localStorage.getItem('lk') || '[]'); } catch(e) { l = []; }
-    var a = (l.indexOf(id) >= 0) ? "minus" : "plus";
-    if (a === "plus") l.push(id); else { var nl = []; for(var i=0;i<l.length;i++) if(l[i]!==id) nl.push(l[i]); l=nl; }
-    try { localStorage.setItem('lk', JSON.stringify(l)); } catch(e) {}
-    var xhr = new XMLHttpRequest(); xhr.open('POST', '/like', true); xhr.setRequestHeader('Content-Type', 'application/json'); xhr.onload = function() { load(); }; xhr.send(JSON.stringify({id: id, action: a}));
+    // いいね済みかどうかはサーバー側(posts.jsonのliked_by)が正であり、
+    // ここではブラウザのlocalStorageは一切参照・更新しない。
+    // サーバーが「自分は既に押したか」を判定してplus/minusを決める。
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/like', true); xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.onload = function() { load(); };
+    xhr.send(JSON.stringify({id: id, sid: SID}));
   }
 
   function setR(id, u) {
@@ -646,7 +718,7 @@
     else if (f.type === "audio") { var lbl = document.createElement('div'); lbl.style.cssText = "font-size:0.8em; color:#555; margin-bottom:6px;"; lbl.textContent = "🎵 ." + ext; wrap.appendChild(lbl); var aud = document.createElement('audio'); aud.controls = true; aud.preload = "metadata"; aud.style.cssText = "width:100%; display:block;"; aud.src = url; wrap.appendChild(aud); }
     else {
       var fileIcon = document.createElement('div'); fileIcon.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-top:4px;";
-      var fileRow = document.createElement('div'); fileRow.style.cssText = "display:inline-flex; align-items:center; gap:8px; padding:8px 12px; background:#f5f5f5; border:1px solid #ddd; border-radius:8px; font-size:0.85em; color:#444;"; fileRow.innerHTML = fileIconSVG() + '<span>' + f.save_name + '</span>';
+      var fileRow = document.createElement('div'); fileRow.style.cssText = "display:inline-flex; align-items:center; gap:8px; padding:8px 12px; background:#f5f5f5; border:1px solid #ddd; border-radius:8px; font-size:0.85em; color:#444;"; fileRow.innerHTML = fileIconSVG() + '<span>' + escapeHtml(f.save_name) + '</span>';
       var dlBtn = document.createElement('a'); dlBtn.href = url; dlBtn.download = f.save_name; dlBtn.textContent = '⬇ ダウンロード'; dlBtn.style.cssText = "display:inline-block; padding:5px 12px; background:#00bcd4; color:#fff; border-radius:6px; font-size:0.8em; font-weight:bold; text-decoration:none;";
       fileIcon.appendChild(fileRow); fileIcon.appendChild(dlBtn); wrap.appendChild(fileIcon);
     }
@@ -655,7 +727,7 @@
     container.appendChild(wrap);
   }
 
-  function renderPost(p, isRep, gDiv, lk) {
+  function renderPost(p, isRep, gDiv) {
     if (!p) return document.createElement('div');
     var wrap = document.createElement('div'); wrap.className = isRep ? 'reply-post' : 'post';
     if (p.thread) wrap.setAttribute('data-thread', p.thread);
@@ -679,10 +751,10 @@
               : restriction === "sensitive" ? ' <span style="color:#ffb300; font-size:0.75em; border:1px solid #ffb300; padding:1px 4px; border-radius:4px;">⚠️ 閲覧注意</span>'
               : restriction === "spoiler" ? ' <span style="color:#80d8ff; font-size:0.75em; border:1px solid #80d8ff; padding:1px 4px; border-radius:4px;">🙈 ネタバレ</span>' : '';
 
-    wrap.innerHTML = '<div class="post-header"><img src="/static/icons/' + (p.icon || 'default.png') + '" class="user-icon" onerror="this.src=\'/static/icons/default.png\'"><b>' + (p.user || 'Unknown') + '</b>' + badge + '<span style="font-size:0.7em; color:#999; margin-left:auto;">' + formatJST(p.time) + '</span></div>';
+    wrap.innerHTML = '<div class="post-header"><img src="/static/icons/' + escapeHtml(p.icon || 'default.png') + '" class="user-icon" onerror="this.src=\'/static/icons/default.png\'"><b>' + escapeHtml(p.user || 'Unknown') + '</b>' + badge + '<span style="font-size:0.7em; color:#999; margin-left:auto;">' + escapeHtml(formatJST(p.time)) + '</span></div>';
     var body = document.createElement('div'); body.style.paddingLeft = isRep ? '42px' : '55px';
 
-    var reportedMap = getReportedPosts(); var isReported = reportedMap[p.id]; var isApproved = p.is_approved || false;
+    var isApproved = p.is_approved || false; var isReported = (p.is_reported || false) && !isApproved;
 
     if (isReported && !isApproved) {
       var repMsg = document.createElement('div'); repMsg.className = 'reported-msg'; repMsg.innerText = '⚠️ この投稿は通報されたため、管理者の認証を受けるまで本文を一時隠蔽しています。'; body.appendChild(repMsg);
@@ -733,7 +805,7 @@
           } else {
             var fileIcon2 = document.createElement('div'); fileIcon2.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-top:10px;";
             var fileRow2 = document.createElement('div'); fileRow2.style.cssText = "display:inline-flex; align-items:center; gap:8px; padding:8px 12px; background:#f5f5f5; border:1px solid #ddd; border-radius:8px; font-size:0.85em; color:#444;";
-            fileRow2.innerHTML = fileIconSVG() + '<span>' + (p.file.original_name || p.file.save_name) + '</span>';
+            fileRow2.innerHTML = fileIconSVG() + '<span>' + escapeHtml(p.file.original_name || p.file.save_name) + '</span>';
             var dlBtn2 = document.createElement('a'); dlBtn2.href = url; dlBtn2.download = p.file.original_name || p.file.save_name; dlBtn2.textContent = '⬇ ダウンロード'; dlBtn2.style.cssText = "display:inline-block; padding:5px 12px; background:#00bcd4; color:#fff; border-radius:6px; font-size:0.8em; font-weight:bold; text-decoration:none;";
             fileIcon2.appendChild(fileRow2); fileIcon2.appendChild(dlBtn2); m.appendChild(fileIcon2);
           }
@@ -764,9 +836,9 @@
       }
     }
 
-    var liked = (lk.indexOf(p.id) >= 0);
+    var liked = !!p.liked; // サーバー(posts.json)側の判定を信頼する
     var actions = document.createElement('div'); actions.style.cssText = "margin-top:10px; font-size:0.8em;";
-    actions.innerHTML = '<span style="color:#00bcd4; cursor:pointer; font-weight:bold;" onclick="setR(\'' + p.id + '\',\'' + (p.user || '') + '\')">返信</span>'
+    actions.innerHTML = '<span style="color:#00bcd4; cursor:pointer; font-weight:bold;" onclick="setR(\'' + escForOnclick(p.id) + '\',\'' + escForOnclick(p.user || '') + '\')">返信</span>'
       + '<span style="margin-left:15px; color:' + (liked ? '#ff4081' : '#ccc') + '; cursor:pointer; font-weight:bold;" onclick="doL(\'' + p.id + '\')">❤️ ' + (p.likes || 0) + '</span>'
       + '<span style="margin-left:15px; color:#ff9800; cursor:pointer; font-weight:bold;" onclick="reportPost(\'' + p.id + '\', ' + isApproved + ')">🚨 通報</span>'
       + (p.user === CURRENT_USER ? '<span style="margin-left:15px; color:#ff4081; cursor:pointer; font-weight:bold;" onclick="delP(\'' + p.id + '\')">削除</span>' : '');
@@ -777,17 +849,16 @@
   function load() {
     updateUIVisibility(); renderThreadTabs();
     var searchBox = document.getElementById('post-search'); if (searchBox) searchBox.value = '';
-    var xhr1 = new XMLHttpRequest(); xhr1.open('GET', '/buildvi?get_type=json', true);
+    var xhr1 = new XMLHttpRequest(); xhr1.open('GET', '/buildvi?get_type=json&sid=' + encodeURIComponent(SID || ''), true);
     xhr1.onload = function() {
       var data; try { data = JSON.parse(xhr1.responseText); } catch(e) { return; }
-      var lk; try { lk = JSON.parse(localStorage.getItem('lk') || '[]'); } catch(e) { lk = []; }
       var pDiv = document.getElementById("post-list"); var gDiv = document.getElementById("media-gallery"); var uCon = document.getElementById("user-container"); var hDiv = document.getElementById("hot-posts");
       pDiv.innerHTML = ""; gDiv.innerHTML = ""; uCon.innerHTML = ""; hDiv.innerHTML = "";
 
       var users = data.all.filter(function(u) { return u.type === "user"; });
       for (var i = 0; i < users.length; i++) {
         var u = users[i];
-        uCon.innerHTML += '<div class="user-card" onclick="openDM(\'' + (u.user || '') + '\')"><img src="/static/icons/' + (u.icon || 'default.png') + '" onerror="this.src=\'/static/icons/default.png\'"><span>' + (u.user || '') + '</span></div>';
+        uCon.innerHTML += '<div class="user-card" onclick="openDM(\'' + escForOnclick(u.user || '') + '\')"><img src="/static/icons/' + escapeHtml(u.icon || 'default.png') + '" onerror="this.src=\'/static/icons/default.png\'"><span>' + escapeHtml(u.user || '') + '</span></div>';
       }
 
       var posts = data.all.filter(function(p) { return p.type !== "user"; });
@@ -807,17 +878,51 @@
       // 【要件適用】投稿ログをループしながら実際に「投稿されたファイルのみ」をギャラリーに表示
       for (var i = 0; i < reversed.length; i++) {
         var p = reversed[i];
-        pDiv.appendChild(renderPost(p, false, gDiv, lk));
+        pDiv.appendChild(renderPost(p, false, gDiv));
         var reps = replies.filter(function(r) { return r.reply_to === p.id; });
-        for (var j = 0; j < reps.length; j++) pDiv.appendChild(renderPost(reps[j], true, gDiv, lk));
+        for (var j = 0; j < reps.length; j++) pDiv.appendChild(renderPost(reps[j], true, gDiv));
       }
 
       for (var i = 0; i < data.hot.length; i++) {
         var hp = data.hot[i];
-        hDiv.innerHTML += '<div style="margin-bottom:12px; border-left:4px solid #ff4081; padding:8px 12px; background:rgba(255,64,129,0.03); border-radius:0 8px 8px 0;"><div style="font-weight:bold; font-size:0.9em;">' + (hp.user || '') + '</div><div style="font-size:0.8em; color:#555; margin:4px 0;">' + (hp.message || '').substring(0,40) + '...</div><div style="font-size:0.75em; color:#ff4081; font-weight:bold;">❤️ ' + (hp.likes || 0) + ' likes</div></div>';
+        hDiv.innerHTML += '<div style="margin-bottom:12px; border-left:4px solid #ff4081; padding:8px 12px; background:rgba(255,64,129,0.03); border-radius:0 8px 8px 0;"><div style="font-weight:bold; font-size:0.9em;">' + escapeHtml(hp.user || '') + '</div><div style="font-size:0.8em; color:#555; margin:4px 0;">' + escapeHtml((hp.message || '').substring(0,40)) + '...</div><div style="font-size:0.75em; color:#ff4081; font-weight:bold;">❤️ ' + (parseInt(hp.likes,10) || 0) + ' likes</div></div>';
       }
       filterPosts();
+      checkMyDMCases();
     }; xhr1.send();
+  }
+
+  var _dmCaseNotified = {};
+  function checkMyDMCases() {
+    if (!SID) return;
+    var xhr = new XMLHttpRequest(); xhr.open('GET', '/dm_case/mine?sid=' + encodeURIComponent(SID), true);
+    xhr.onload = function() {
+      var data; try { data = JSON.parse(xhr.responseText); } catch(e) { return; }
+      if (data.status !== "ok") return;
+      (data.cases || []).forEach(function(c) {
+        if (_dmCaseNotified[c.id]) return;
+        _dmCaseNotified[c.id] = true;
+        var msg = "⚠️ あなたのDMメッセージが通報されました。\n\n"
+          + "対象メッセージ: 「" + c.reported_message.text + "」\n"
+          + "通報理由: " + c.reason + "\n\n"
+          + "このメッセージについて、管理者へ説明（抗議）を提出できます。\n"
+          + "今すぐ抗議内容を入力しますか？（あとで無視することもできます）";
+        if (!confirm(msg)) return;
+        var protest = prompt("抗議内容を入力してください（例: 誤解である理由、経緯など）:");
+        if (!protest) return;
+        var fd = new FormData(); fd.append("sid", SID); fd.append("case_id", c.id); fd.append("protest_text", protest);
+        var xhr2 = new XMLHttpRequest(); xhr2.open('POST', '/dm_case/protest', true);
+        xhr2.onload = function() {
+          try {
+            var d2 = JSON.parse(xhr2.responseText);
+            if (d2.status === "ok") alert("抗議内容を管理者に送信しました。");
+            else alert("エラー: " + (d2.error || "送信に失敗しました"));
+          } catch(e) { alert("通信エラーが発生しました"); }
+        };
+        xhr2.send(fd);
+      });
+    };
+    xhr.send();
   }
 
   window.onload = load;
