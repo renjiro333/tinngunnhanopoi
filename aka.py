@@ -172,8 +172,9 @@ def random_filename(length=16, ext=".bin"):
 
 import requests
 
-BIN_ID = "6a88439dda38895dfeff8ebb"
-API_KEY = "$2a$10$TFeJTJSAhYLB4IQseoHrCuK7fyp6cMFYWkA/KeUMSNYKkxd3Yep8G"
+# GitHubには書かず、Renderの環境変数から安全に読み込む
+BIN_ID = os.environ.get("BIN_ID")
+API_KEY = os.environ.get("API_KEY")
 
 # JSONBinから全体のデータを取得する関数
 def get_store():
