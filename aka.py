@@ -170,45 +170,65 @@ def normalize_message(text: str) -> str | None:
 def random_filename(length=16, ext=".bin"):
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length)) + ext
 
+import requests
+
+BIN_ID = "6a88439dda38895dfeff8ebb"
+API_KEY = "$2a$10$TFeJTJSAhYLB4IQseoHrCuK7fyp6cMFYWkA/KeUMSNYKkxd3Yep8G"
+
+# JSONBinから全体のデータを取得する関数
+def get_store():
+    url = f"https://api.jsonbin.io/v3/b/{BIN_ID}/latest"
+    headers = {"X-Master-Key": API_KEY}
+    try:
+        res = requests.get(url, headers=headers)
+        if res.status_code == 200:
+            return res.json().get("record", {})
+    except Exception as e:
+        print("読み込みエラー:", e)
+    return {}
+
+# JSONBinへ全体のデータを更新する関数
+def update_store(key, value):
+    store = get_store()
+    store[key] = value
+    url = f"https://api.jsonbin.io/v3/b/{BIN_ID}"
+    headers = {"Content-Type": "application/json", "X-Master-Key": API_KEY}
+    try:
+        requests.put(url, json=store, headers=headers)
+    except Exception as e:
+        print("保存エラー:", e)
+
+# --- ここから各データの読み書き（コードの既存部分を差し替え） ---
 def loaddata():
-    if not os.path.exists(DATA_FILE): return {}
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        try: return json.load(f)
-        except: return {}
+    return get_store().get("data", {})
 
 def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+    update_store("data", data)
 
 def loadposts():
-    if not os.path.exists(POSTS_FILE): return []
-    with open(POSTS_FILE, "r", encoding="utf-8") as f:
-        try: return json.load(f)
-        except: return []
+    return get_store().get("posts", [])
 
 def saveposts(posts):
-    with open(POSTS_FILE, "w", encoding="utf-8") as f:
-        json.dump(posts, f, ensure_ascii=False, indent=4)
-
-def load_json_list(path):
-    if not os.path.exists(path): return []
-    with open(path, "r", encoding="utf-8") as f:
-        try: return json.load(f)
-        except: return []
-
-def save_json_list(path, items):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(items, f, ensure_ascii=False, indent=4)
+    update_store("posts", posts)
 
 def load_dms():
-    if not os.path.exists(DM_FILE): return {}
-    with open(DM_FILE, "r", encoding="utf-8") as f:
-        try: return json.load(f)
-        except: return {}
+    return get_store().get("dms", {})
 
 def save_dms(dms):
-    with open(DM_FILE, "w", encoding="utf-8") as f:
-        json.dump(dms, f, ensure_ascii=False, indent=4)
+    update_store("dms", dms)
+
+def load_json_list(path):
+    if "post_reports" in path:
+        return get_store().get("post_reports", [])
+    elif "dm_cases" in path:
+        return get_store().get("dm_cases", [])
+    return []
+
+def save_json_list(path, items):
+    if "post_reports" in path:
+        update_store("post_reports", items)
+    elif "dm_cases" in path:
+        update_store("dm_cases", items)
 
 def dm_pair_key(a, b):
     return "::".join(sorted([a, b]))
