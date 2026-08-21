@@ -9,12 +9,15 @@ from flask import (
 from chat import generate_reply
 from PIL import Image
 from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
 import urllib.parse
 import zlib
 import base64
 import random
 import string
 import uuid
+import secrets
+import time
 from datetime import datetime
 
 # ─────────────────────────────────────────
@@ -22,24 +25,70 @@ from datetime import datetime
 # ─────────────────────────────────────────
 # -*- coding: utf-8 -*-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ICON_DIR = os.path.join(BASE_DIR, "static", "icns")
+ICON_DIR = os.path.join(BASE_DIR, "static", "icons")
 POSTS_FILE = os.path.join(BASE_DIR, "posts.json")
 DATA_FILE = os.path.join(BASE_DIR, "data.json")
 UPLOAD_DIR = os.path.join(BASE_DIR, "static", "uploads")
 NOVELS_FILE = os.path.join(BASE_DIR, "novls.json") # ★新規：小説管理JSON
+DM_FILE = os.path.join(BASE_DIR, "dm.json")
+POST_REPORTS_FILE = os.path.join(BASE_DIR, "post_reports.json")
+DM_CASES_FILE = os.path.join(BASE_DIR, "dm_cases.json")
+
+# 管理者パスワード。必ず環境変数 ADMIN_PASSWORD で上書きしてください。
+# 未設定のまま本番運用すると誰でも管理者になれてしまうため、起動時に警告します。
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
+if not ADMIN_PASSWORD:
+    ADMIN_PASSWORD = base64.b64encode(os.urandom(9)).decode()
+    print("=" * 60)
+    print("[警告] 環境変数 ADMIN_PASSWORD が未設定です。")
+    print(f"今回だけ有効な仮パスワードを生成しました: {ADMIN_PASSWORD}")
+    print("次回以降も使うパスワードは必ず環境変数 ADMIN_PASSWORD に設定してください。")
+    print("=" * 60)
 
 os.makedirs(ICON_DIR, exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app = Flask(__name__, template_folder="mysite/templates")
-app.secret_key = "akai"
+# secret_key はハードコードせず、環境変数 SECRET_KEY から読む。
+# 未設定の場合は起動のたびにランダム生成（本番では必ず環境変数を設定して固定すること）
+app.secret_key = os.environ.get("SECRET_KEY") or base64.b64encode(os.urandom(32)).decode()
 app.config["SESSION_TYPE"] = "filesystem"
 app.config["SESSION_FILE_DIR"] = "./.flask_session"
 app.config["SESSION_PERMANENT"] = False
 
+# アップロード総サイズの上限（ディスク枯渇によるDoSを防ぐ）
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB
+
+# セッションCookieの保護
+app.config["SESSION_COOKIE_HTTPONLY"] = True   # JSからCookieを読めなくする（XSS時の被害軽減）
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # CSRF対策の一環
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_ENV") == "production"
+# ↑ Secure属性はHTTPS環境でのみCookieを送信させるためのもの。
+#   ローカルのHTTP開発環境ではCookieが送信されなくなるため、
+#   本番(HTTPS)では有効化・開発中は無効化されるようにしている。
+#   本番運用時は環境変数 FLASK_ENV=production を必ず設定すること。
+
 MEDIA_DIR = BASE_DIR
 USER_SESSIONS = {}
 access_count = 0
+
+# ─────────────────────────────────────────
+# 🔒 ブルートフォース対策（ログイン・管理者パネル共通）
+# ─────────────────────────────────────────
+LOGIN_ATTEMPTS = {}   # key: "username" -> [失敗時刻のリスト]
+ADMIN_ATTEMPTS = {}   # key: IPアドレス -> [失敗時刻のリスト]
+
+def is_rate_limited(store, key, max_attempts=5, window_seconds=300):
+    now = time.time()
+    attempts = [t for t in store.get(key, []) if now - t < window_seconds]
+    store[key] = attempts
+    return len(attempts) >= max_attempts
+
+def record_failed_attempt(store, key):
+    store.setdefault(key, []).append(time.time())
+
+def clear_attempts(store, key):
+    store.pop(key, None)
 
 # --- ここから追加：Chromebookをブロックするおまじない ---
 @app.before_request
@@ -76,6 +125,20 @@ def get_drive_direct_url(url):
         # view ではなく download に変更する（こちらの方が安定します）
         return f"https://drive.google.com/uc?export=download&id={file_id}"
     return url
+
+def save_uploaded_icon(file_storage, dest_path):
+    """アップロードされたアイコンが本物の画像であることを確認してから保存する。
+    拡張子は常に .png に固定して保存するが、中身がPNG/JPEG等の画像ファイルで
+    なければ拒否する（HTML/SVG/スクリプトファイルを png と偽って保存させない）。"""
+    try:
+        img = Image.open(file_storage.stream)
+        img.verify()
+        file_storage.stream.seek(0)
+        img = Image.open(file_storage.stream).convert("RGBA")
+        img.save(dest_path, format="PNG")
+        return True
+    except Exception:
+        return False
 
 def save_placeholder_icon(path):
     img = Image.new("RGBA", (400, 400), (255, 255, 255, 0))
@@ -126,6 +189,29 @@ def loadposts():
 def saveposts(posts):
     with open(POSTS_FILE, "w", encoding="utf-8") as f:
         json.dump(posts, f, ensure_ascii=False, indent=4)
+
+def load_json_list(path):
+    if not os.path.exists(path): return []
+    with open(path, "r", encoding="utf-8") as f:
+        try: return json.load(f)
+        except: return []
+
+def save_json_list(path, items):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(items, f, ensure_ascii=False, indent=4)
+
+def load_dms():
+    if not os.path.exists(DM_FILE): return {}
+    with open(DM_FILE, "r", encoding="utf-8") as f:
+        try: return json.load(f)
+        except: return {}
+
+def save_dms(dms):
+    with open(DM_FILE, "w", encoding="utf-8") as f:
+        json.dump(dms, f, ensure_ascii=False, indent=4)
+
+def dm_pair_key(a, b):
+    return "::".join(sorted([a, b]))
 
 from flask import request, abort
 
@@ -180,25 +266,46 @@ def watch():
             else:
                 display_title = os.path.splitext(clean_name)[0]
 
-    # プレイヤーの出し分け (UIはaka.pyに合わせて width="640" に統一)
-    if "mega.nz/embed" in filename:
-        content = f'<iframe width="640" height="360" frameborder="0" src="{filename}" allowfullscreen tabindex="-1"></iframe>'
-    elif filename.startswith("http"):
-        content = f'<video controls autoplay width="640" tabindex="-1"><source src="{filename}" type="video/mp4"></video>'
-    else:
-        src = f"/static/uploads/{filename[len('__upload__'):]}" if filename.startswith("__upload__") else f"/media/{filename}"
-        content = f'<video controls autoplay width="640" tabindex="-1"><source src="{src}" type="video/mp4"></video>'
+    # URLスキームの簡易ホワイトリスト（javascript: 等の危険なスキームを弾く）
+    def is_safe_url(u: str) -> bool:
+        return u.startswith("http://") or u.startswith("https://")
 
-    # 元の aka.py らしい飾らないHTML構造 [cite: 1]
-    html = f'''
-    <h2>🎬 再生中: {display_title}</h2>
-    {content}
+    # プレイヤーの種類だけをサーバー側で決定し、実際のURL/ファイル名は
+    # 必ずJinja2のオートエスケープを通して埋め込む（テンプレート文字列自体には
+    # 一切ユーザー入力を混ぜない = SSTI対策）
+    if "mega.nz/embed" in filename and is_safe_url(filename):
+        player_kind = "iframe"
+        media_src = filename
+    elif filename.startswith("http"):
+        if not is_safe_url(filename):
+            return "不正なURLです", 400
+        player_kind = "video"
+        media_src = filename
+    else:
+        player_kind = "video"
+        media_src = f"/static/uploads/{filename[len('__upload__'):]}" if filename.startswith("__upload__") else f"/media/{filename}"
+
+    # HTMLテンプレートは固定の文字列（ユーザー入力を一切含まない）とし、
+    # 変数は render_template_string の第二引数以降として渡すことで
+    # Jinja2の自動エスケープが必ず効くようにする
+    html = '''
+    <h2>🎬 再生中: {{ display_title }}</h2>
+    {% if player_kind == "iframe" %}
+    <iframe width="640" height="360" frameborder="0" src="{{ media_src }}" allowfullscreen tabindex="-1"></iframe>
+    {% else %}
+    <video controls autoplay width="640" tabindex="-1"><source src="{{ media_src }}" type="video/mp4"></video>
+    {% endif %}
     <p><a href="/full">← 戻る</a></p>
-    <p>アクセス数: {access_count}</p>
-    {extra_script}
+    <p>アクセス数: {{ access_count }}</p>
     '''
 
-    return render_template_string(html)
+    return render_template_string(
+        html,
+        display_title=display_title,
+        player_kind=player_kind,
+        media_src=media_src,
+        access_count=access_count,
+    )
 
 # ─────────────────────────────────────────
 # /full メディア一覧 (外部動画は最新順・ローカルは名前順)
@@ -408,7 +515,11 @@ def play():
     filename = request.args.get("filename")
     if not filename: return "filename が指定されていません", 400
     src = f"/static/uploads/{filename[len('__upload__'):]}" if filename.startswith("__upload__") else f"/media/{filename}"
-    return f'<audio controls autoplay><source src="{src}" type="audio/mpeg"></audio><p><a href="/full">← 戻る</a></p><p>アクセス数: {access_count}</p>'
+    return render_template_string(
+        '<audio controls autoplay><source src="{{ src }}" type="audio/mpeg"></audio>'
+        '<p><a href="/full">← 戻る</a></p><p>アクセス数: {{ access_count }}</p>',
+        src=src, access_count=access_count
+    )
 
 @app.route("/view_html")
 def view_html():
@@ -426,11 +537,26 @@ def view_image():
     filename = request.args.get("filename")
     if not filename: return "filename が指定されていません", 400
     src = f"/static/uploads/{filename[len('__upload__'):]}" if filename.startswith("__upload__") else f"/media/{filename}"
-    return f'<img src="{src}" alt="{filename}" style="max-width:480px; height:auto;"><p><a href="/full">← 戻る</a></p><p>アクセス数: {access_count}</p>'
+    return render_template_string(
+        '<img src="{{ src }}" alt="{{ filename }}" style="max-width:480px; height:auto;">'
+        '<p><a href="/full">← 戻る</a></p><p>アクセス数: {{ access_count }}</p>',
+        src=src, filename=filename, access_count=access_count
+    )
+
+SAFE_MEDIA_EXTENSIONS = {
+    ".mp4", ".webm", ".mp3", ".wav", ".jpg", ".jpeg", ".png", ".gif"
+}
 
 @app.route("/media/<filename>")
 def media(filename):
     global access_count
+    # MEDIA_DIR は以前 BASE_DIR（アプリのルート）そのものだったため、
+    # aka.py / data.json / posts.json / novls.json / chat.py などの
+    # ソースコードや個人情報まで誰でもダウンロードできてしまっていた。
+    # ここでは拡張子をメディア系だけに限定し、それ以外は一切配信しない。
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in SAFE_MEDIA_EXTENSIONS:
+        return abort(403)
     access_count += 1
     return send_from_directory(MEDIA_DIR, filename)
 from flask import request, redirect, render_template_string
@@ -518,12 +644,22 @@ def novel_list():
 # 小説の読み込みページ
 @app.route("/novel/read")
 def novel_read():
-    filename = request.args.get("filename")
+    filename = request.args.get("filename", "")
     target_media_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "media")
-    file_path = os.path.join(target_media_dir, filename)
 
-    if not os.path.exists(file_path):
-        return f"ファイルが見つかりません: {file_path}", 404
+    # パストラバーサル対策:
+    # secure_filename() は日本語ファイル名（小説タイトル）を壊してしまうため使わず、
+    # 区切り文字や ".." を含む入力を拒否したうえで、解決後のパスが
+    # 必ず target_media_dir の内側にあることを確認する（多重防御）
+    if not filename or "/" in filename or "\\" in filename or ".." in filename:
+        return abort(400)
+    abs_media_dir = os.path.abspath(target_media_dir)
+    file_path = os.path.normpath(os.path.join(abs_media_dir, filename))
+    if not (file_path == abs_media_dir or file_path.startswith(abs_media_dir + os.sep)):
+        return abort(403)
+
+    if not os.path.exists(file_path) or not os.path.isfile(file_path):
+        return "ファイルが見つかりません", 404
 
     with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
@@ -573,7 +709,8 @@ def classroom_page():
             if not icon_file:
                 return flask.jsonify({"status": "error", "error": "no file"}), 400
             fname = random_filename(16, ".png")
-            icon_file.save(os.path.join(ICON_DIR, fname))
+            if not save_uploaded_icon(icon_file, os.path.join(ICON_DIR, fname)):
+                return flask.jsonify({"status": "error", "error": "画像ファイルとして認識できません"}), 400
             user["icon_filename"] = fname
             data = loaddata()
             name = user["student_name"]
@@ -597,22 +734,75 @@ def classroom_page():
         # ログイン・登録
         elif action_type in ["login", "register"]:
             mode = flask.request.form.get("mode")
-            name = flask.request.form.get("username")
+            name = (flask.request.form.get("username") or "").strip()
+            password = flask.request.form.get("password") or ""
             data = loaddata()
+
+            if not name:
+                return flask.jsonify({"status": "error", "error": "ユーザー名を入力してください"}), 400
+
             if mode == "register":
                 icon_file = flask.request.files.get("icon")
                 if not icon_file or name in data:
                     return flask.jsonify({"status": "error", "error": "register failed"}), 400
+                if len(password) < 4:
+                    return flask.jsonify({"status": "error", "error": "パスワードは4文字以上にしてください"}), 400
                 fname = random_filename(16, ".png")
-                icon_file.save(os.path.join("static", "icons", fname))
-                data[name] = {"icon": fname}
+                if not save_uploaded_icon(icon_file, os.path.join(ICON_DIR, fname)):
+                    return flask.jsonify({"status": "error", "error": "画像ファイルとして認識できません"}), 400
+                data[name] = {
+                    "icon": fname,
+                    "pwhash": generate_password_hash(password),
+                    "violation_count": 0,
+                    "restricted": False,
+                    "pending_deletion": False,
+                }
                 save_data(data)
             else:
-                fname = data.get(name, {}).get("icon")
+                # ブルートフォース対策: 同一ユーザー名への短時間の大量ログイン失敗を制限
+                if is_rate_limited(LOGIN_ATTEMPTS, name):
+                    return flask.jsonify({
+                        "status": "error",
+                        "error": "ログイン試行回数が多すぎます。しばらく待ってから再度お試しください。"
+                    }), 429
+
+                user_record = data.get(name)
+                if not user_record or "pwhash" not in user_record:
+                    record_failed_attempt(LOGIN_ATTEMPTS, name)
+                    return flask.jsonify({"status": "error", "error": "ユーザー名またはパスワードが違います"}), 401
+                if not check_password_hash(user_record["pwhash"], password):
+                    record_failed_attempt(LOGIN_ATTEMPTS, name)
+                    return flask.jsonify({"status": "error", "error": "ユーザー名またはパスワードが違います"}), 401
+                clear_attempts(LOGIN_ATTEMPTS, name)
+
+                # 通報が認定され、処分保留中のアカウントは、この次のログインのタイミングで削除する
+                # （本来はここでメール通知を送るべきだが、このアプリにはメール送信基盤がないため、
+                #   ログイン試行時にその場でお知らせを返すことで代替している）
+                if user_record.get("pending_deletion"):
+                    del data[name]
+                    save_data(data)
+                    ps = loadposts()
+                    ps = [p for p in ps if p.get("user") != name]
+                    saveposts(ps)
+                    return flask.jsonify({
+                        "status": "error",
+                        "error": "通報内容が認定されたため、このアカウントは削除されました。",
+                        "account_deleted": True
+                    }), 403
+
+                if user_record.get("restricted"):
+                    return flask.jsonify({
+                        "status": "error",
+                        "error": "違反が繰り返されたため、このアカウントは投稿が制限されています。管理者にお問い合わせください。"
+                    }), 403
+
+                fname = user_record.get("icon")
                 if not fname:
                     ps = loadposts()
                     fname = next((p["icon"] for p in reversed(ps) if p.get("user") == name), "default.png")
-            new_sid = str(uuid.uuid4())[:8]
+            # 以前は uuid4()[:8] （約32bit）で、総当たりにやや弱かったため、
+            # secrets.token_hex を使い暗号学的に安全な192bitのSIDに強化
+            new_sid = secrets.token_hex(24)
             USER_SESSIONS[new_sid] = {"student_name": name, "icon_filename": fname}
             return flask.jsonify({"status": "ok", "sid": new_sid, "icon": fname})
 
@@ -654,6 +844,16 @@ def classroom_page():
 
                 if post_file and post_file.filename:
                     ext = os.path.splitext(post_file.filename)[1].lower()
+
+                    # 拡張子ホワイトリスト: .html/.svg/.js 等を許すと、
+                    # /static/uploads/ 経由で配信された際に格納型XSSの温床になるため拒否する
+                    ALLOWED_UPLOAD_EXT = {
+                        ".mp4", ".webm", ".mp3", ".wav",
+                        ".jpg", ".jpeg", ".png", ".gif", ".webp"
+                    }
+                    if ext not in ALLOWED_UPLOAD_EXT:
+                        return flask.jsonify({"status": "error", "error": "許可されていないファイル形式です"}), 400
+
                     raw_base = os.path.splitext(post_file.filename)[0]
                     safe_base = re.sub(r'[\\/:*?"<>|\x00-\x1f]', '_', raw_base).strip() or "file"
                     suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
@@ -685,11 +885,21 @@ def classroom_page():
     all_posts = loadposts()
 
     if get_type == "json":
+        req_sid = flask.request.args.get("sid")
+        req_user = USER_SESSIONS.get(req_sid)
+        req_username = req_user["student_name"] if req_user else None
+
         formatted_list = []
         for p in all_posts:
             item = p.copy()
             item["likes"] = int(item.get("likes", 0))
             if "type" in item: del item["type"]
+            # liked_by は全ユーザー名の一覧なので、クライアントには
+            # 「自分がいいね済みかどうか」だけを渡し、生のリストは渡さない
+            liked_by = item.pop("liked_by", None) or []
+            item["liked"] = bool(req_username and req_username in liked_by)
+            item["is_approved"] = (item.get("report_status") == "approved")
+            item["is_reported"] = (item.get("report_status") == "pending")
             formatted_list.append(item)
 
         for name, info in user_dict.items():
@@ -723,20 +933,431 @@ def like_post():
     import flask
     data = flask.request.json or {}
     post_id = data.get("id")
-    action = data.get("action")
+    sid = data.get("sid")
+
+    # ログインしていないユーザーはいいねできない（以前は誰でも無認証で
+    # /like に直接POSTしていいね数を無制限に操作できてしまっていた）
+    user = USER_SESSIONS.get(sid)
+    if not user:
+        return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
+    username = user["student_name"]
+
     ps = loadposts()
+    result_liked = None
 
     for p in ps:
         if str(p.get("id")) == str(post_id):
-            current_likes = int(p.get("likes", 0))
-            if action == "plus":
-                p["likes"] = current_likes + 1
-            elif action == "minus":
-                p["likes"] = max(0, current_likes - 1)
+            liked_by = p.get("liked_by") or []
+            # クライアントが送ってくる action は信用せず、
+            # サーバー側で「すでにこのユーザーがいいね済みか」だけを見て
+            # トグルする（1ユーザー1いいねをサーバー側で強制）
+            if username in liked_by:
+                liked_by.remove(username)
+                result_liked = False
+            else:
+                liked_by.append(username)
+                result_liked = True
+            p["liked_by"] = liked_by
+            p["likes"] = len(liked_by)
             break
+    else:
+        return flask.jsonify({"status": "error", "error": "投稿が見つかりません"}), 404
 
     saveposts(ps)
+    return flask.jsonify({"status": "ok", "liked": result_liked})
+
+
+# ─────────────────────────────────────────
+# 💬 DM（ダイレクトメッセージ）: サーバー側保存
+# ─────────────────────────────────────────
+def dm_history_visible_to(username, other, limit=200):
+    """指定した2人の会話履歴を返す。management(管理者)からは絶対に呼ばれない関数であり、
+    本人同士のDM取得専用。管理者は別ルート(report_dm経由で提出された特定メッセージのみ)しか見られない。"""
+    dms = load_dms()
+    key = dm_pair_key(username, other)
+    return dms.get(key, [])[-limit:]
+
+@app.route("/dm/send", methods=["POST"])
+def dm_send():
+    import flask
+    sid = flask.request.form.get("sid")
+    target = (flask.request.form.get("target") or "").strip()
+    text = normalize_message(flask.request.form.get("text"))
+    user = USER_SESSIONS.get(sid)
+    if not user:
+        return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
+    if not target or target == user["student_name"]:
+        return flask.jsonify({"status": "error", "error": "宛先が不正です"}), 400
+    if not text:
+        return flask.jsonify({"status": "error", "error": "メッセージを入力してください"}), 400
+
+    data = loaddata()
+    if target not in data:
+        return flask.jsonify({"status": "error", "error": "宛先ユーザーが存在しません"}), 404
+
+    dms = load_dms()
+    key = dm_pair_key(user["student_name"], target)
+    dms.setdefault(key, [])
+    msg = {
+        "id": str(uuid.uuid4()),
+        "sender": user["student_name"],
+        "text": text,
+        "time": datetime.now().strftime("%m/%d %H:%M"),
+    }
+    dms[key].append(msg)
+    save_dms(dms)
+    return flask.jsonify({"status": "ok", "message": msg})
+
+@app.route("/dm/list")
+def dm_list():
+    import flask
+    sid = flask.request.args.get("sid")
+    target = (flask.request.args.get("target") or "").strip()
+    user = USER_SESSIONS.get(sid)
+    if not user:
+        return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
+    if not target:
+        return flask.jsonify({"status": "error", "error": "宛先が不正です"}), 400
+    logs = dm_history_visible_to(user["student_name"], target)
+    return flask.jsonify({"status": "ok", "messages": logs})
+
+
+# ─────────────────────────────────────────
+# 🚨 投稿の通報
+# ─────────────────────────────────────────
+@app.route("/report_post", methods=["POST"])
+def report_post():
+    import flask
+    sid = flask.request.form.get("sid")
+    post_id = flask.request.form.get("post_id")
+    reason = normalize_message(flask.request.form.get("reason"))
+    user = USER_SESSIONS.get(sid)
+    if not user:
+        return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
+    if not reason:
+        return flask.jsonify({"status": "error", "error": "通報理由を入力してください"}), 400
+
+    ps = loadposts()
+    target_post = next((p for p in ps if str(p.get("id")) == str(post_id)), None)
+    if not target_post:
+        return flask.jsonify({"status": "error", "error": "投稿が見つかりません"}), 404
+
+    # 一度「問題なし」と管理者が認定した投稿は、再度通報されても隠さない
+    if target_post.get("report_status") == "approved":
+        return flask.jsonify({"status": "ok", "already_approved": True})
+
+    target_post["report_status"] = "pending"
+    saveposts(ps)
+
+    reports = load_json_list(POST_REPORTS_FILE)
+    reports.append({
+        "id": str(uuid.uuid4()),
+        "post_id": post_id,
+        "reporter": user["student_name"],
+        "reported_user": target_post.get("user"),
+        "message_snapshot": target_post.get("message", ""),
+        "reason": reason,
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "status": "pending",  # pending / approved / removed
+    })
+    save_json_list(POST_REPORTS_FILE, reports)
     return flask.jsonify({"status": "ok"})
+
+
+# ─────────────────────────────────────────
+# 🚨 DMメッセージの通報（DM全体ではなく、通報対象の1メッセージのみを提出する）
+# ─────────────────────────────────────────
+@app.route("/report_dm", methods=["POST"])
+def report_dm():
+    import flask
+    sid = flask.request.form.get("sid")
+    target = (flask.request.form.get("target") or "").strip()   # 会話相手（＝通報される側）
+    message_id = flask.request.form.get("message_id")
+    reason = normalize_message(flask.request.form.get("reason"))
+    user = USER_SESSIONS.get(sid)
+    if not user:
+        return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
+    if not target or not reason:
+        return flask.jsonify({"status": "error", "error": "入力内容が不正です"}), 400
+
+    dms = load_dms()
+    key = dm_pair_key(user["student_name"], target)
+    logs = dms.get(key, [])
+    msg = next((m for m in logs if m.get("id") == message_id), None)
+    if not msg:
+        return flask.jsonify({"status": "error", "error": "対象のメッセージが見つかりません"}), 404
+
+    # 重要: DM全体ではなく、通報対象として選ばれた「そのメッセージ1件」だけを
+    # 証拠として提出する。管理者はこの提出された内容以外のDMを閲覧できない。
+    cases = load_json_list(DM_CASES_FILE)
+    case = {
+        "id": str(uuid.uuid4()),
+        "reporter": user["student_name"],
+        "accused": msg.get("sender"),
+        "conversation_with": target,
+        "reported_message": {
+            "text": msg.get("text"),
+            "sender": msg.get("sender"),
+            "time": msg.get("time"),
+        },
+        "reason": reason,
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "status": "pending_review",  # pending_review / protest_submitted / resolved_ok / resolved_removed
+        "protest_text": None,
+    }
+    cases.append(case)
+    save_json_list(DM_CASES_FILE, cases)
+    return flask.jsonify({"status": "ok"})
+
+@app.route("/dm_case/mine")
+def dm_case_mine():
+    """自分が通報された案件のうち、まだ抗議(講義)していないものを返す"""
+    import flask
+    sid = flask.request.args.get("sid")
+    user = USER_SESSIONS.get(sid)
+    if not user:
+        return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
+    cases = load_json_list(DM_CASES_FILE)
+    mine = [
+        {"id": c["id"], "reason": c["reason"], "reported_message": c["reported_message"], "time": c["time"]}
+        for c in cases
+        if c.get("accused") == user["student_name"] and c.get("status") == "pending_review"
+    ]
+    return flask.jsonify({"status": "ok", "cases": mine})
+
+@app.route("/dm_case/protest", methods=["POST"])
+def dm_case_protest():
+    import flask
+    sid = flask.request.form.get("sid")
+    case_id = flask.request.form.get("case_id")
+    protest_text = normalize_message(flask.request.form.get("protest_text"))
+    user = USER_SESSIONS.get(sid)
+    if not user:
+        return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
+    if not protest_text:
+        return flask.jsonify({"status": "error", "error": "抗議内容を入力してください"}), 400
+
+    cases = load_json_list(DM_CASES_FILE)
+    case = next((c for c in cases if c.get("id") == case_id), None)
+    if not case or case.get("accused") != user["student_name"]:
+        return flask.jsonify({"status": "error", "error": "対象の案件が見つかりません"}), 404
+
+    case["protest_text"] = protest_text
+    case["status"] = "protest_submitted"
+    save_json_list(DM_CASES_FILE, cases)
+    return flask.jsonify({"status": "ok"})
+
+
+# ─────────────────────────────────────────
+# 🛡️ 管理者パネル
+# 認証はパスワード必須。ここから閲覧できるDM関連情報は、
+# 通報時に提出された「該当メッセージ1件」と、本人が提出した「抗議文」だけであり、
+# 会話履歴全体(dm.json)を管理者が自由に閲覧できる経路は一切用意していない。
+# ─────────────────────────────────────────
+ADMIN_HTML = '''
+<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
+<title>管理者パネル</title>
+<style>
+body{font-family:sans-serif;background:#f4f6f8;margin:0;padding:20px;color:#333;}
+h1{font-size:1.3em;} h2{font-size:1.05em;border-bottom:2px solid #00bcd4;padding-bottom:6px;margin-top:30px;}
+.card{background:#fff;border-radius:8px;padding:14px 18px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.08);}
+.meta{font-size:0.8em;color:#888;margin-bottom:6px;}
+.msg{background:#f9f9f9;border-left:4px solid #ff9800;padding:8px 12px;margin:8px 0;font-size:0.9em;white-space:pre-wrap;}
+.protest{background:#fff8e1;border-left:4px solid #ffc107;padding:8px 12px;margin:8px 0;font-size:0.9em;white-space:pre-wrap;}
+button{border:none;border-radius:6px;padding:7px 14px;font-weight:bold;cursor:pointer;margin-right:6px;}
+.btn-ok{background:#4caf50;color:#fff;} .btn-danger{background:#e53935;color:#fff;} .btn-neutral{background:#607d8b;color:#fff;}
+.empty{color:#999;font-size:0.9em;}
+.login-box{max-width:320px;margin:80px auto;background:#fff;padding:24px;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,0.1);}
+input[type=password]{width:100%;padding:8px;box-sizing:border-box;margin-bottom:10px;border:1px solid #ccc;border-radius:6px;}
+.err{color:#e53935;font-size:0.85em;}
+table{border-collapse:collapse;width:100%;font-size:0.85em;} td,th{padding:6px 8px;border-bottom:1px solid #eee;text-align:left;}
+</style></head><body>
+{% if not authed %}
+  <div class="login-box">
+    <h1>🛡️ 管理者ログイン</h1>
+    <form method="post">
+      <input type="hidden" name="do" value="login">
+      <input type="password" name="admin_password" placeholder="管理者パスワード" autofocus>
+      <button type="submit" class="btn-ok" style="width:100%;">ログイン</button>
+    </form>
+    {% if error %}<p class="err">{{ error }}</p>{% endif %}
+  </div>
+{% else %}
+  <h1>🛡️ 管理者パネル</h1>
+
+  <h2>🚨 通報された投稿（{{ post_reports|length }}件）</h2>
+  {% if not post_reports %}<p class="empty">現在ありません。</p>{% endif %}
+  {% for r in post_reports %}
+    <div class="card">
+      <div class="meta">通報者: {{ r.reporter }} ／ 対象ユーザー: {{ r.reported_user }} ／ {{ r.time }}</div>
+      <div class="msg">{{ r.message_snapshot }}</div>
+      <div class="meta">通報理由: {{ r.reason }}</div>
+      <form method="post" style="display:inline;">
+        <input type="hidden" name="do" value="post_approve"><input type="hidden" name="report_id" value="{{ r.id }}">
+        <button type="submit" class="btn-ok">✅ 問題なし（以後非表示にしない）</button>
+      </form>
+      <form method="post" style="display:inline;">
+        <input type="hidden" name="do" value="post_remove"><input type="hidden" name="report_id" value="{{ r.id }}">
+        <button type="submit" class="btn-danger" onclick="return confirm('この投稿を削除しますか？');">🗑 削除する</button>
+      </form>
+    </div>
+  {% endfor %}
+
+  <h2>💬 通報されたDMメッセージ（{{ dm_cases|length }}件）</h2>
+  <p class="empty">※ここで見えるのは通報者が提出した該当メッセージ1件のみです。DM全体の履歴は表示されません。</p>
+  {% if not dm_cases %}<p class="empty">現在ありません。</p>{% endif %}
+  {% for c in dm_cases %}
+    <div class="card">
+      <div class="meta">通報者: {{ c.reporter }} ／ 対象ユーザー(送信者): {{ c.accused }} ／ {{ c.time }} ／ 状態: {{ c.status }}</div>
+      <div class="msg">「{{ c.reported_message.text }}」（送信: {{ c.reported_message.sender }} / {{ c.reported_message.time }}）</div>
+      <div class="meta">通報理由: {{ c.reason }}</div>
+      {% if c.status == 'protest_submitted' %}
+        <div class="protest">📝 本人からの抗議: {{ c.protest_text }}</div>
+      {% elif c.status == 'pending_review' %}
+        <p class="empty">まだ本人からの抗議はありません。抗議があった場合のみここに表示されます。</p>
+      {% endif %}
+      <form method="post" style="display:inline;">
+        <input type="hidden" name="do" value="dm_dismiss"><input type="hidden" name="case_id" value="{{ c.id }}">
+        <button type="submit" class="btn-neutral">問題なしとして却下</button>
+      </form>
+      <form method="post" style="display:inline;">
+        <input type="hidden" name="do" value="dm_punish"><input type="hidden" name="case_id" value="{{ c.id }}">
+        <button type="submit" class="btn-danger" onclick="return confirm('このユーザーのアカウントを次回ログイン時に削除対象にしますか？');">🔨 処分（次回ログイン時にアカウント削除）</button>
+      </form>
+    </div>
+  {% endfor %}
+
+  <h2>⚠️ 違反回数・利用制限中のユーザー</h2>
+  <table>
+    <tr><th>ユーザー名</th><th>違反回数</th><th>投稿制限</th><th>操作</th></tr>
+    {% for u in flagged_users %}
+    <tr>
+      <td>{{ u.name }}</td><td>{{ u.violation_count }}</td><td>{{ "制限中" if u.restricted else "-" }}</td>
+      <td>
+        {% if u.restricted %}
+        <form method="post" style="display:inline;">
+          <input type="hidden" name="do" value="unrestrict"><input type="hidden" name="username" value="{{ u.name }}">
+          <button type="submit" class="btn-ok">制限解除</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <p style="margin-top:30px;"><a href="?logout=1">ログアウト</a></p>
+{% endif %}
+</body></html>
+'''
+
+VIOLATION_RESTRICT_THRESHOLD = 3  # この回数だけ削除処分を受けると自動的に投稿制限をかける
+
+@app.route("/adminkonngyokimjonnunnwatasihakannrisyadesuahahahaha", methods=["GET", "POST"])
+def admin_panel():
+    import flask
+    client_ip = flask.request.remote_addr or "unknown"
+
+    if flask.request.method == "GET" and flask.request.args.get("logout"):
+        session.pop("is_admin", None)
+        return flask.redirect(flask.url_for("admin_panel"))
+
+    error = None
+    if flask.request.method == "POST" and flask.request.form.get("do") == "login":
+        if is_rate_limited(ADMIN_ATTEMPTS, client_ip, max_attempts=5, window_seconds=600):
+            error = "試行回数が多すぎます。しばらく待ってから再度お試しください。"
+        else:
+            submitted = flask.request.form.get("admin_password", "")
+            # タイミング攻撃対策として定数時間比較を使う
+            import hmac
+            if hmac.compare_digest(submitted, ADMIN_PASSWORD):
+                session["is_admin"] = True
+                clear_attempts(ADMIN_ATTEMPTS, client_ip)
+                return flask.redirect(flask.url_for("admin_panel"))
+            else:
+                record_failed_attempt(ADMIN_ATTEMPTS, client_ip)
+                error = "パスワードが違います。"
+
+    if not session.get("is_admin"):
+        return render_template_string(ADMIN_HTML, authed=False, error=error)
+
+    # ── 管理者アクションの処理 ──
+    if flask.request.method == "POST":
+        do = flask.request.form.get("do")
+        data = loaddata()
+
+        if do == "post_approve":
+            report_id = flask.request.form.get("report_id")
+            reports = load_json_list(POST_REPORTS_FILE)
+            rep = next((r for r in reports if r.get("id") == report_id), None)
+            if rep:
+                rep["status"] = "approved"
+                save_json_list(POST_REPORTS_FILE, reports)
+                ps = loadposts()
+                for p in ps:
+                    if str(p.get("id")) == str(rep["post_id"]):
+                        p["report_status"] = "approved"
+                saveposts(ps)
+
+        elif do == "post_remove":
+            report_id = flask.request.form.get("report_id")
+            reports = load_json_list(POST_REPORTS_FILE)
+            rep = next((r for r in reports if r.get("id") == report_id), None)
+            if rep:
+                rep["status"] = "removed"
+                save_json_list(POST_REPORTS_FILE, reports)
+                ps = loadposts()
+                ps = [p for p in ps if str(p.get("id")) != str(rep["post_id"])]
+                saveposts(ps)
+                offender = rep.get("reported_user")
+                if offender and offender in data:
+                    data[offender]["violation_count"] = data[offender].get("violation_count", 0) + 1
+                    if data[offender]["violation_count"] >= VIOLATION_RESTRICT_THRESHOLD:
+                        data[offender]["restricted"] = True
+                    save_data(data)
+
+        elif do == "dm_dismiss":
+            case_id = flask.request.form.get("case_id")
+            cases = load_json_list(DM_CASES_FILE)
+            case = next((c for c in cases if c.get("id") == case_id), None)
+            if case:
+                case["status"] = "resolved_ok"
+                save_json_list(DM_CASES_FILE, cases)
+
+        elif do == "dm_punish":
+            case_id = flask.request.form.get("case_id")
+            cases = load_json_list(DM_CASES_FILE)
+            case = next((c for c in cases if c.get("id") == case_id), None)
+            if case:
+                case["status"] = "resolved_removed"
+                save_json_list(DM_CASES_FILE, cases)
+                offender = case.get("accused")
+                if offender and offender in data:
+                    # 通報が認定された場合、即座には消さず「次回ログイン時に削除」フラグを立てる
+                    # （その間にお知らせを出すため。本来はメール送信すべき部分）
+                    data[offender]["pending_deletion"] = True
+                    save_data(data)
+
+        elif do == "unrestrict":
+            username = flask.request.form.get("username")
+            if username in data:
+                data[username]["restricted"] = False
+                data[username]["violation_count"] = 0
+                save_data(data)
+
+    # ── ダッシュボード表示 ──
+    post_reports = [r for r in load_json_list(POST_REPORTS_FILE) if r.get("status") == "pending"]
+    dm_cases = [c for c in load_json_list(DM_CASES_FILE) if c.get("status") in ("pending_review", "protest_submitted")]
+    data = loaddata()
+    flagged_users = [
+        {"name": name, "violation_count": u.get("violation_count", 0), "restricted": u.get("restricted", False)}
+        for name, u in data.items()
+        if u.get("violation_count", 0) > 0 or u.get("restricted", False)
+    ]
+
+    return render_template_string(
+        ADMIN_HTML, authed=True, error=None,
+        post_reports=post_reports, dm_cases=dm_cases, flagged_users=flagged_users
+    )
 
 
 @app.route("/api/files")
