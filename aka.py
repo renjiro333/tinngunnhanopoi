@@ -200,6 +200,7 @@ def update_store(key, value):
         print("保存エラー:", e)
 
 # --- ここから各データの読み書き（コードの既存部分を差し替え） ---
+# --- ここから各データの読み書き（コードの既存部分を差し替え） ---
 def loaddata():
     return get_store().get("data", {})
 
@@ -234,6 +235,37 @@ def save_json_list(path, items):
 def dm_pair_key(a, b):
     return "::".join(sorted([a, b]))
 
+# --- JSONBinでの画像（Base64）処理 ---
+def save_image_to_bin(file_storage, key_name):
+    """アップロードされた画像を検証・Base64化してJSONBinに保存"""
+    try:
+        img = Image.open(file_storage.stream)
+        img.verify()
+        file_storage.stream.seek(0)
+        img = Image.open(file_storage.stream).convert("RGBA")
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        b64_str = base64.b64encode(buf.getvalue()).decode("utf-8")
+        data_url = f"data:image/png;base64,{b64_str}"
+
+        images = get_store().get("images", {})
+        images[key_name] = data_url
+        update_store("images", images)
+        return data_url
+    except Exception as e:
+        print("画像保存エラー:", e)
+        return None
+
+def get_image_from_bin(key_name):
+    """JSONBinから画像(Data URL)を取得"""
+    return get_store().get("images", {}).get(key_name)
+
+def list_icons():
+    """JSONBin内の画像をアイコン一覧として取得（既存のローカルファイル読み込みを差し替え）"""
+    images = get_store().get("images", {})
+    return [{"name": name, "src": data_url} for name, data_url in images.items()]
+
 from flask import request, abort
 
 # 全てのリクエストの前に実行されるチェック
@@ -244,7 +276,6 @@ def block_chromebook():
     if 'cros' in user_agent:
         # または render_template で専用のアクセス拒否ページを返しても良いです
         abort(403, description="Chromebookからのアクセスは許可されていません。")
-        
 # ─────────────────────────────────────────
 # /watch 動画再生
 # ─────────────────────────────────────────
