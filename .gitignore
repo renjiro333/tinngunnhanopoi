@@ -1,0 +1,21 @@
+# パスワードや秘密鍵が入ったファイル（絶対に公開しない）
+.env
+
+# セッション情報
+.flask_session/
+
+# ユーザーの投稿・登録データ（個人情報が入っている）
+data.json
+posts.json
+dm.json
+post_reports.json
+dm_cases.json
+novls.json
+
+# アップロードされた画像・動画・アイコン
+static/uploads/
+static/icons/
+
+# Python関連の自動生成ファイル
+__pycache__/
+*.pyc
