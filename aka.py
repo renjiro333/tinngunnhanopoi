@@ -946,12 +946,24 @@ def classroom_page():
             if not name:
                 return flask.jsonify({"status": "error", "error": "ユーザー名を入力してください"}), 400
 
-            if mode == "register":
-                icon_file = flask.request.files.get("icon")
-                if not icon_file or name in data:
-                    return flask.jsonify({"status": "error", "error": "register failed"}), 400
-                if len(password) < 4:
-                    return flask.jsonify({"status": "error", "error": "パスワードは4文字以上にしてください"}), 400
+if mode == "register":
+    icon_file = flask.request.files.get("icon")
+    if not icon_file or name in data:
+        return flask.jsonify({"status": "error", "error": "register failed"}), 400
+    if len(password) < 4:
+        return flask.jsonify({"status": "error", "error": "パスワードは4文字以上にしてください"}), 400
+    fname = random_filename(16, ".png")
+    if not save_uploaded_icon(icon_file, fname):
+        return flask.jsonify({"status": "error", "error": "画像ファイルとして認識できません"}), 400
+    data[name] = {
+        "icon": fname,
+        "pwhash": generate_password_hash(password),
+        "violation_count": 0,
+        "restricted": False,
+        "pending_deletion": False,
+    }
+    save_data(data)
+    
 # アイコン変更の処理
 fname = random_filename(16, ".png")
 if not save_uploaded_icon(icon_file, fname):  # ← ここだけ！(os.path.joinを外す)
