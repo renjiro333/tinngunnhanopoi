@@ -6,6 +6,7 @@ from flask import (
     redirect, url_for, session, jsonify, send_from_directory,
     make_response, abort
 )
+from supabase import create_client
 from chat import generate_reply
 from PIL import Image
 from werkzeug.utils import secure_filename
@@ -200,73 +201,225 @@ def update_store(key, value):
         print("保存エラー:", e)
 
 # --- ここから各データの読み書き（コードの既存部分を差し替え） ---
-# --- ここから各データの読み書き（コードの既存部分を差し替え） ---
-def loaddata():
-    return get_store().get("data", {})
+# ─────────────────────────────────────────
+# ★ Supabase 接続（環境変数から読む）
+# ─────────────────────────────────────────
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
 
-def save_data(data):
-    update_store("data", data)
+if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+    print("⚠️ SUPABASE_URL または SUPABASE_SERVICE_KEY が未設定です。")
+    supabase = None
+else:
+    supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-def loadposts():
-    return get_store().get("posts", [])
-
-def saveposts(posts):
-    update_store("posts", posts)
-
-def load_dms():
-    return get_store().get("dms", {})
-
-def save_dms(dms):
-    update_store("dms", dms)
-
-def load_json_list(path):
-    if "post_reports" in path:
-        return get_store().get("post_reports", [])
-    elif "dm_cases" in path:
-        return get_store().get("dm_cases", [])
-    return []
-
-def save_json_list(path, items):
-    if "post_reports" in path:
-        update_store("post_reports", items)
-    elif "dm_cases" in path:
-        update_store("dm_cases", items)
+# ─────────────────────────────────────────
+# ユーティリティ（再定義しておく）
+# ─────────────────────────────────────────
+def random_filename(length=16, ext=".bin"):
+    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length)) + ext
 
 def dm_pair_key(a, b):
     return "::".join(sorted([a, b]))
 
-# --- JSONBinでの画像（Base64）処理 ---
-def save_image_to_bin(file_storage, key_name):
-    """アップロードされた画像を検証・Base64化してJSONBinに保存"""
+# ─────────────────────────────────────────
+# ★ データ保存関数（すべてSupabase経由）
+# ─────────────────────────────────────────
+
+def loaddata():
+    """users テーブル → {username: userdata} 辞書"""
+    if supabase is None:
+        return {}
+    try:
+        res = supabase.table("users").select("*").execute()
+        data = {}
+        for row in res.data:
+            name = row.pop("name")
+            data[name] = row
+        return data
+    except Exception as e:
+        print("loaddataエラー:", e)
+        return {}
+
+def save_data(data):
+    """users テーブルに upsert"""
+    if supabase is None:
+        return
+    try:
+        rows = []
+        for name, info in data.items():
+            rows.append({
+                "name": name,
+                "icon": info.get("icon"),
+                "pwhash": info.get("pwhash"),
+                "violation_count": info.get("violation_count", 0),
+                "restricted": info.get("restricted", False),
+                "pending_deletion": info.get("pending_deletion", False),
+            })
+        if rows:
+            supabase.table("users").upsert(rows).execute()
+    except Exception as e:
+        print("save_dataエラー:", e)
+
+def loadposts():
+    """posts テーブル → リスト"""
+    if supabase is None:
+        return []
+    try:
+        res = supabase.table("posts").select("*").execute()
+        return res.data
+    except Exception as e:
+        print("loadpostsエラー:", e)
+        return []
+
+def saveposts(posts):
+    """posts テーブルに upsert（idベース）"""
+    if supabase is None:
+        return
+    try:
+        if posts:
+            supabase.table("posts").upsert(posts).execute()
+    except Exception as e:
+        print("savepostsエラー:", e)
+
+def load_dms():
+    """dm_messages テーブル → {pair_key: [messages]}"""
+    if supabase is None:
+        return {}
+    try:
+        res = supabase.table("dm_messages").select("*").execute()
+        dms = {}
+        for row in res.data:
+            key = row.get("pair_key")
+            if key not in dms:
+                dms[key] = []
+            dms[key].append({
+                "id": row.get("id"),
+                "sender": row.get("sender"),
+                "text": row.get("text"),
+                "time": row.get("time"),
+            })
+        return dms
+    except Exception as e:
+        print("load_dmsエラー:", e)
+        return {}
+
+def save_dms(dms):
+    """dms を dm_messages テーブルに全入れ替え"""
+    if supabase is None:
+        return
+    try:
+        try:
+            supabase.table("dm_messages").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+        except:
+            pass
+        rows = []
+        for pair_key, msgs in dms.items():
+            for msg in msgs:
+                rows.append({
+                    "id": msg.get("id", str(uuid.uuid4())),
+                    "pair_key": pair_key,
+                    "sender": msg.get("sender"),
+                    "text": msg.get("text"),
+                    "time": msg.get("time"),
+                })
+        if rows:
+            supabase.table("dm_messages").insert(rows).execute()
+    except Exception as e:
+        print("save_dmsエラー:", e)
+
+def load_json_list(path):
+    """post_reports / dm_cases を読み込む"""
+    if supabase is None:
+        return []
+    try:
+        if "post_reports" in path:
+            res = supabase.table("post_reports").select("*").execute()
+            return res.data
+        elif "dm_cases" in path:
+            res = supabase.table("dm_cases").select("*").execute()
+            return res.data
+        return []
+    except Exception as e:
+        print("load_json_listエラー:", e)
+        return []
+
+def save_json_list(path, items):
+    """post_reports / dm_cases を全入れ替え保存"""
+    if supabase is None:
+        return
+    try:
+        if "post_reports" in path:
+            try:
+                supabase.table("post_reports").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+            except:
+                pass
+            if items:
+                supabase.table("post_reports").insert(items).execute()
+        elif "dm_cases" in path:
+            try:
+                supabase.table("dm_cases").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+            except:
+                pass
+            if items:
+                supabase.table("dm_cases").insert(items).execute()
+    except Exception as e:
+        print("save_json_listエラー:", e)
+
+def save_uploaded_icon(file_storage, filename):
+    """Supabase Storage の 'icons' バケットに画像をアップロード（第2引数はファイル名だけ）"""
+    if supabase is None:
+        return False
     try:
         img = Image.open(file_storage.stream)
         img.verify()
         file_storage.stream.seek(0)
         img = Image.open(file_storage.stream).convert("RGBA")
-
+        import io
         buf = io.BytesIO()
         img.save(buf, format="PNG")
-        b64_str = base64.b64encode(buf.getvalue()).decode("utf-8")
-        data_url = f"data:image/png;base64,{b64_str}"
-
-        images = get_store().get("images", {})
-        images[key_name] = data_url
-        update_store("images", images)
-        return data_url
+        buf.seek(0)
+        bucket_name = "icons"
+        supabase.storage.from_(bucket_name).upload(
+            filename, buf.getvalue(), {"content-type": "image/png"}
+        )
+        return True
     except Exception as e:
-        print("画像保存エラー:", e)
-        return None
+        print("アイコンアップロードエラー:", e)
+        return False
 
-def get_image_from_bin(key_name):
-    """JSONBinから画像(Data URL)を取得"""
-    return get_store().get("images", {}).get(key_name)
+def get_icon_url(filename):
+    """Supabase Storage の公開URLを取得"""
+    if supabase is None or not filename:
+        return "/static/icons/default.png"
+    try:
+        bucket_name = "icons"
+        return supabase.storage.from_(bucket_name).get_public_url(filename)
+    except:
+        return "/static/icons/default.png"
 
 def list_icons():
-    """JSONBin内の画像をアイコン一覧として取得（既存のローカルファイル読み込みを差し替え）"""
-    images = get_store().get("images", {})
-    return [{"name": name, "src": data_url} for name, data_url in images.items()]
-
-from flask import request, abort
+    """icons バケット内のファイル一覧を取得"""
+    if supabase is None:
+        return []
+    try:
+        bucket_name = "icons"
+        res = supabase.storage.from_(bucket_name).list()
+        icons = []
+        for file_obj in res:
+            name = os.path.splitext(file_obj["name"])[0]
+            try:
+                display_name = urllib.parse.unquote(name)
+            except:
+                display_name = name
+            icons.append({
+                "name": display_name,
+                "src": supabase.storage.from_(bucket_name).get_public_url(file_obj["name"])
+            })
+        return icons
+    except Exception as e:
+        print("list_iconsエラー:", e)
+        return []
 
 # 全てのリクエストの前に実行されるチェック
 @app.before_request
@@ -799,9 +952,10 @@ def classroom_page():
                     return flask.jsonify({"status": "error", "error": "register failed"}), 400
                 if len(password) < 4:
                     return flask.jsonify({"status": "error", "error": "パスワードは4文字以上にしてください"}), 400
-                fname = random_filename(16, ".png")
-                if not save_uploaded_icon(icon_file, os.path.join(ICON_DIR, fname)):
-                    return flask.jsonify({"status": "error", "error": "画像ファイルとして認識できません"}), 400
+# アイコン変更の処理
+　　　　　　　　　fname = random_filename(16, ".png")
+if not save_uploaded_icon(icon_file, fname):  # ← ここだけ！(os.path.joinを外す)
+    return flask.jsonify({"status": "error", "error": "画像ファイルとして認識できません"}), 400
                 data[name] = {
                     "icon": fname,
                     "pwhash": generate_password_hash(password),
@@ -897,14 +1051,6 @@ def classroom_page():
                 if post_file and post_file.filename:
                     ext = os.path.splitext(post_file.filename)[1].lower()
 
-                    # 拡張子ホワイトリスト: .html/.svg/.js 等を許すと、
-                    # /static/uploads/ 経由で配信された際に格納型XSSの温床になるため拒否する
-                    ALLOWED_UPLOAD_EXT = {
-                        ".mp4", ".webm", ".mp3", ".wav",
-                        ".jpg", ".jpeg", ".png", ".gif", ".webp"
-                    }
-                    if ext not in ALLOWED_UPLOAD_EXT:
-                        return flask.jsonify({"status": "error", "error": "許可されていないファイル形式です"}), 400
 
                     raw_base = os.path.splitext(post_file.filename)[0]
                     safe_base = re.sub(r'[\\/:*?"<>|\x00-\x1f]', '_', raw_base).strip() or "file"
