@@ -963,7 +963,7 @@ if not save_uploaded_icon(icon_file, fname):  # ← ここだけ！(os.path.join
                     "restricted": False,
                     "pending_deletion": False,
                 }
-                save_data(data)
+save_data(data)
             else:
                 # ブルートフォース対策: 同一ユーザー名への短時間の大量ログイン失敗を制限
                 if is_rate_limited(LOGIN_ATTEMPTS, name):
