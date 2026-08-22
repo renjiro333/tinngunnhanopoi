@@ -953,7 +953,7 @@ def classroom_page():
                 if len(password) < 4:
                     return flask.jsonify({"status": "error", "error": "パスワードは4文字以上にしてください"}), 400
 # アイコン変更の処理
-　　　　　　　　　fname = random_filename(16, ".png")
+fname = random_filename(16, ".png")
 if not save_uploaded_icon(icon_file, fname):  # ← ここだけ！(os.path.joinを外す)
     return flask.jsonify({"status": "error", "error": "画像ファイルとして認識できません"}), 400
                 data[name] = {
