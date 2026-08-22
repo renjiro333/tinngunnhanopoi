@@ -72,14 +72,18 @@
     .ds-btn.active { background: #00bcd4; color: #fff; }
     .reported-msg { background: #ffe4e8; color: #d32f2f; padding: 8px 12px; border-radius: 6px; font-size: 0.85em; font-weight: bold; border-left: 4px solid #d32f2f; }
 
-    /* 年齢確認モーダル */
-    #age-overlay { display:none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.8); z-index: 10001; justify-content:center; align-items:center; }
-    .age-container { width: 340px; background:#1a000a; border:2px solid #ff4081; padding:25px; border-radius:12px; text-align:center; color:#fff; }
-    .age-container h3 { margin-top:0; color:#ff4081; }
-    .age-container input[type="date"] { width:100%; padding:8px; border-radius:6px; border:1px solid #ff4081; background:#fff; margin:10px 0; box-sizing:border-box; }
-    .age-btn-yes { width:100%; padding:10px; background:#ff4081; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer; margin-top:8px; }
-    .age-btn-no { width:100%; padding:8px; background:transparent; color:#aaa; border:1px solid #555; border-radius:6px; cursor:pointer; margin-top:8px; }
-    #age-err { color:#ff8a80; font-size:0.8em; min-height:1.2em; margin-top:6px; }
+    /* 通報受理・抗議結果の通知バナー */
+    .notice-banner { background:#fff3e0; border-left:4px solid #ff9800; border-radius:6px; padding:10px 14px; margin-bottom:12px; font-size:0.88em; }
+    .notice-banner.accepted { background:#e0f7fa; border-left-color:#00bcd4; }
+    .notice-banner .notice-actions { margin-top:8px; }
+    .notice-banner button { border:none; border-radius:15px; padding:5px 14px; font-size:0.8em; font-weight:bold; cursor:pointer; margin-right:6px; }
+    .notice-banner .btn-appeal { background:#ff9800; color:#fff; }
+    .notice-banner .btn-dismiss { background:#e0e0e0; color:#333; }
+    .notice-banner textarea { width:100%; box-sizing:border-box; margin-top:8px; padding:8px; border:1px solid #ccc; border-radius:6px; font-size:0.85em; }
+
+    /* 生年月日の一度きり設定エリア(設定モーダル内、旧アカウント救済用) */
+    #birthdate-setup-area { display:none; background:#fff8e1; border:1px solid #ffe082; border-radius:8px; padding:12px; margin-top:10px; }
+    #birthdate-setup-area input[type="date"] { width:100%; padding:8px; border:1px solid #ccc; border-radius:6px; box-sizing:border-box; margin:8px 0; }
 
     /* 設定モーダル */
     #settings-overlay { display:none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.7); z-index: 10000; justify-content:center; align-items:center; }
@@ -128,6 +132,8 @@
     <input type="text" id="login-username" name="username" autocomplete="username" placeholder="名前を入力" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; margin-bottom:10px;">
     <div id="mi-sect">
       <input type="password" id="login-password" name="password" autocomplete="new-password" placeholder="パスワードを設定" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; margin-bottom:10px;">
+      <label style="font-size:0.8em; color:#555; display:block; margin-bottom:4px;">生年月日（登録後は変更できません。R18コンテンツ閲覧の判定にのみ使われます）</label>
+      <input type="date" id="login-birthdate" name="birthdate" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; margin-bottom:10px;">
       <label class="custom-file-btn">
         <input type="file" id="login-icon-file" accept="image/*" onchange="upName(this,'mn-icon')">アイコン選択 (画像全般)
       </label>
@@ -175,6 +181,14 @@
     </div>
     <p id="r18-minor-msg">18歳未満と確認されたため、18歳になるまでこの機能はご利用いただけません。</p>
 
+    <div id="birthdate-setup-area">
+      <p style="font-size:0.8em; color:#795548; font-weight:bold; margin:0 0 6px;">生年月日が未登録です</p>
+      <p style="font-size:0.75em; color:#795548; margin:0 0 6px;">R18表示のご利用には生年月日の登録が必要です。<b>一度登録すると変更できません。</b>必ずご自身の本当の生年月日を入力してください。</p>
+      <input type="date" id="birthdate-setup-input">
+      <p id="birthdate-setup-err" style="color:#d32f2f; font-size:0.75em; min-height:1.1em;"></p>
+      <button onclick="submitBirthdateOnce()" style="width:100%; padding:8px; background:#795548; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">生年月日を登録する</button>
+    </div>
+
     <div class="settings-row" style="flex-direction:column; align-items:flex-start; border-bottom:none; margin-top:10px;">
       <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
         <label style="color:#d32f2f;">🗑 アカウントを削除する</label>
@@ -188,17 +202,6 @@
         <button onclick="confirmDeleteAccount()" style="width:100%; padding:10px; background:#d32f2f; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">完全に削除する</button>
       </div>
     </div>
-  </div>
-</div>
-
-<div id="age-overlay">
-  <div class="age-container">
-    <h3>🔞 年齢確認</h3>
-    <p style="font-size:0.85em; color:#eee;">この先には18歳未満の閲覧が適さないコンテンツが含まれます。生年月日を入力して、18歳以上であることを確認してください。</p>
-    <input type="date" id="age-birthdate">
-    <p id="age-err"></p>
-    <button class="age-btn-yes" onclick="submitAgeVerify()">確認して閲覧する</button>
-    <button class="age-btn-no" onclick="closeAgeModal()">やめる</button>
   </div>
 </div>
 
@@ -238,6 +241,9 @@
         </div>
       </div>
     </div>
+
+    <!-- 通報・抗議に関する、本人向けの通知バナー -->
+    <div id="notification-area"></div>
 
     <!-- 投稿フォーム (オプション機能拡張版) -->
     <form id="post-form" onsubmit="return submitPost(event)">
@@ -288,25 +294,6 @@
 </div>
 
 <script>
-  // ユーザー入力（投稿本文・ユーザー名・ファイル名など）をinnerHTMLに差し込む前に
-  // 必ずこの関数を通し、<script>タグ等が実行されないようにする（格納型XSS対策）
-  function escapeHtml(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-  // onclick="...'+val+'..." のように、HTML属性内のJS文字列リテラルへ
-  // ユーザー入力（ユーザー名など）を埋め込む場合は、JS文字列としての
-  // エスケープとHTML属性としてのエスケープの両方が必要
-  function escForOnclick(s) {
-    var v = String(s == null ? '' : s);
-    v = v.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    v = v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    return v;
-  }
   var SID = "{{ sid or '' }}";
   var CURRENT_USER = "{{ username }}";
   var _curMode = 'register';
@@ -387,26 +374,26 @@
     });
   }
 
-  function getReportedPosts() { try { return JSON.parse(localStorage.getItem('reported_posts') || '{}'); } catch(e) { return {}; } }
-  function reportPost(postId, isApproved) {
-    if (!checkLog()) return;
-    if (isApproved) { alert("この投稿は管理者認証済みのため隠蔽されません。"); return; }
+  var LATEST_DMS = {};
+  var LATEST_NOTIFICATIONS = [];
+
+  function reportPost(postId) {
     var reason = prompt("通報理由を入力してください:");
     if (!reason) return;
-    var fd = new FormData(); fd.append("sid", SID); fd.append("post_id", postId); fd.append("reason", reason);
-    var xhr = new XMLHttpRequest(); xhr.open('POST', '/report_post', true);
+    var fd = new FormData(); fd.append('action_type', 'report_post'); fd.append('sid', SID);
+    fd.append('post_id', postId); fd.append('reason', reason);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/buildvi', true);
     xhr.onload = function() {
       try {
         var data = JSON.parse(xhr.responseText);
-        if (data.status === "ok") {
-          if (data.already_approved) alert("この投稿は管理者認証済みのため隠蔽されません。");
-          else alert("通報を受理しました。管理者の認証を受けるまで本文は一時隠蔽されます。");
-          load();
-        } else alert("エラー: " + (data.error || "通報に失敗しました"));
-      } catch(e) { alert("通信エラーが発生しました"); }
+        if (data.status === 'ok') { alert("通報を受理しました。管理者の確認をお待ちください。"); load(); }
+        else { alert("エラー: " + (data.error || "通報に失敗しました")); }
+      } catch(e) {}
     };
     xhr.send(fd);
   }
+
+  function dmPairKey(a, b) { return [a, b].sort().join('::'); }
 
   function openDM(targetUser) {
     if (!checkLog()) return;
@@ -416,54 +403,119 @@
   }
   function closeDM() { document.getElementById('dm-modal').style.display = 'none'; }
 
-  function reportDMMessage(messageId, target) {
-    var reason = prompt("この人からのメッセージを通報する理由を入力してください:");
+  function renderDMLog() {
+    var pairKey = dmPairKey(CURRENT_USER, activeDMTarget);
+    var logs = LATEST_DMS[pairKey] || [];
+    var logDiv = document.getElementById('dm-chat-log'); logDiv.innerHTML = '';
+    logs.forEach(function(msg) {
+      var row = document.createElement('div');
+      row.style.cssText = "margin-bottom:8px; text-align:" + (msg.sender === CURRENT_USER ? "right" : "left") + ";";
+
+      var senderLabel = document.createElement('span');
+      senderLabel.style.cssText = "font-size:0.7em; color:#888;";
+      senderLabel.textContent = msg.sender || '';
+      row.appendChild(senderLabel);
+      row.appendChild(document.createElement('br'));
+
+      var bubble = document.createElement('span');
+      bubble.style.cssText = "display:inline-block; padding:6px 12px; border-radius:10px; font-size:0.85em; background:" + (msg.sender === CURRENT_USER ? '#00bcd4; color:#fff;' : '#e0e0e0; color:#333;');
+      bubble.textContent = (msg.text === null || msg.text === undefined) ? '（このメッセージは通報が受理されたため削除されました）' : msg.text;
+      row.appendChild(bubble);
+
+      if (msg.sender !== CURRENT_USER && msg.text !== null && msg.text !== undefined) {
+        var repBtn = document.createElement('span');
+        repBtn.style.cssText = "margin-left:8px; font-size:0.7em; color:#ff9800; cursor:pointer;";
+        repBtn.textContent = '🚨'; repBtn.title = 'このメッセージを通報する';
+        repBtn.onclick = function() { reportDM(msg.id, activeDMTarget); };
+        row.appendChild(repBtn);
+      }
+
+      logDiv.appendChild(row);
+    });
+    logDiv.scrollTop = logDiv.scrollHeight;
+  }
+
+  function sendDM() {
+    if (!checkLog()) return;
+    var inp = document.getElementById('dm-input'); var text = inp.value.trim(); if (!text) return;
+    var fd = new FormData(); fd.append('action_type', 'send_dm'); fd.append('sid', SID);
+    fd.append('target_user', activeDMTarget); fd.append('text', text);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/buildvi', true);
+    xhr.onload = function() { inp.value = ''; load(); };
+    xhr.send(fd);
+  }
+
+  function reportDM(messageId, targetUser) {
+    var reason = prompt("通報理由を入力してください:");
     if (!reason) return;
-    var fd = new FormData(); fd.append("sid", SID); fd.append("target", target); fd.append("message_id", messageId); fd.append("reason", reason);
-    var xhr = new XMLHttpRequest(); xhr.open('POST', '/report_dm', true);
+    var fd = new FormData(); fd.append('action_type', 'report_dm'); fd.append('sid', SID);
+    fd.append('target_user', targetUser); fd.append('message_id', messageId); fd.append('reason', reason);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/buildvi', true);
     xhr.onload = function() {
       try {
         var data = JSON.parse(xhr.responseText);
-        if (data.status === "ok") alert("通報しました。通報時に選択したメッセージのみが管理者に送られます（DM全体は見られません）。");
+        if (data.status === 'ok') alert("通報を受け付けました。");
         else alert("エラー: " + (data.error || "通報に失敗しました"));
-      } catch(e) { alert("通信エラーが発生しました"); }
+      } catch(e) {}
     };
     xhr.send(fd);
   }
 
-  function renderDMLog() {
-    var logDiv = document.getElementById('dm-chat-log'); logDiv.innerHTML = '<p class="empty" style="color:#999; font-size:0.85em;">読み込み中...</p>';
-    var xhr = new XMLHttpRequest(); xhr.open('GET', '/dm/list?sid=' + encodeURIComponent(SID) + '&target=' + encodeURIComponent(activeDMTarget), true);
-    xhr.onload = function() {
-      var data; try { data = JSON.parse(xhr.responseText); } catch(e) { logDiv.innerHTML = ''; return; }
-      logDiv.innerHTML = '';
-      if (data.status !== "ok") { logDiv.innerHTML = '<p style="color:#e53935; font-size:0.85em;">' + escapeHtml(data.error || '読み込みに失敗しました') + '</p>'; return; }
-      (data.messages || []).forEach(function(msg) {
-        var p = document.createElement('div');
-        var isMine = (msg.sender === CURRENT_USER);
-        p.style.cssText = "margin-bottom:8px; text-align:" + (isMine ? "right" : "left") + ";";
-        var reportBtn = isMine ? '' : ' <span style="font-size:0.65em; color:#ff9800; cursor:pointer;" onclick="reportDMMessage(\'' + escForOnclick(msg.id) + '\',\'' + escForOnclick(activeDMTarget) + '\')">🚨通報</span>';
-        p.innerHTML = '<span style="font-size:0.7em; color:#888;">' + escapeHtml(msg.sender) + reportBtn + '</span><br><span style="display:inline-block; padding:6px 12px; border-radius:10px; font-size:0.85em; background:' + (isMine ? '#00bcd4; color:#fff;' : '#e0e0e0; color:#333;') + '">' + escapeHtml(msg.text) + '</span>';
-        logDiv.appendChild(p);
-      });
-      logDiv.scrollTop = logDiv.scrollHeight;
-    };
-    xhr.send();
+  function ackNotification(notifId, boxEl) {
+    var fd = new FormData(); fd.append('action_type', 'ack_notification'); fd.append('sid', SID); fd.append('notification_id', notifId);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/buildvi', true);
+    xhr.onload = function() { if (boxEl && boxEl.parentNode) boxEl.parentNode.removeChild(boxEl); };
+    xhr.send(fd);
   }
-  function sendDM() {
-    var inp = document.getElementById('dm-input'); var text = inp.value.trim(); if (!text) return;
-    inp.disabled = true;
-    var fd = new FormData(); fd.append("sid", SID); fd.append("target", activeDMTarget); fd.append("text", text);
-    var xhr = new XMLHttpRequest(); xhr.open('POST', '/dm/send', true);
+
+  function submitAppeal(reportId, notifId, text) {
+    if (!text) { alert('抗議内容を入力してください。'); return; }
+    var fd = new FormData(); fd.append('action_type', 'submit_appeal'); fd.append('sid', SID);
+    fd.append('report_id', reportId); fd.append('appeal_text', text);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/buildvi', true);
     xhr.onload = function() {
-      inp.disabled = false;
       try {
         var data = JSON.parse(xhr.responseText);
-        if (data.status === "ok") { inp.value = ''; renderDMLog(); }
-        else alert("エラー: " + (data.error || "送信に失敗しました"));
-      } catch(e) { alert("通信エラーが発生しました"); }
+        if (data.status === 'ok') { alert('抗議を送信しました。管理者の確認をお待ちください。'); ackNotification(notifId, null); load(); }
+        else { alert('エラー: ' + (data.error || '送信に失敗しました')); }
+      } catch(e) {}
     };
     xhr.send(fd);
+  }
+
+  function renderNotifications() {
+    var area = document.getElementById('notification-area');
+    if (!area) return;
+    area.innerHTML = '';
+    LATEST_NOTIFICATIONS.forEach(function(n) {
+      var box = document.createElement('div');
+      box.className = 'notice-banner' + (n.type === 'appeal_accepted' ? ' accepted' : '');
+      var msg = document.createElement('div'); msg.textContent = n.text || '';
+      box.appendChild(msg);
+
+      var actions = document.createElement('div'); actions.className = 'notice-actions';
+
+      if (n.type === 'content_removed') {
+        var appealBtn = document.createElement('button'); appealBtn.className = 'btn-appeal'; appealBtn.textContent = '抗議する';
+        var appealBox = document.createElement('div'); appealBox.style.display = 'none';
+        var ta = document.createElement('textarea'); ta.rows = 3; ta.placeholder = '抗議の内容を書いてください（できるだけ具体的に）';
+        var submitBtn = document.createElement('button'); submitBtn.className = 'btn-appeal'; submitBtn.style.marginTop = '6px'; submitBtn.textContent = '送信する';
+        submitBtn.onclick = function() { submitAppeal(n.report_id, n.id, ta.value.trim()); };
+        appealBox.appendChild(ta); appealBox.appendChild(document.createElement('br')); appealBox.appendChild(submitBtn);
+        appealBtn.onclick = function() { appealBox.style.display = (appealBox.style.display === 'none') ? 'block' : 'none'; };
+        actions.appendChild(appealBtn);
+        box.appendChild(actions);
+        box.appendChild(appealBox);
+      } else {
+        box.appendChild(actions);
+      }
+
+      var dismissBtn = document.createElement('button'); dismissBtn.className = 'btn-dismiss'; dismissBtn.textContent = '閉じる';
+      dismissBtn.onclick = function() { ackNotification(n.id, box); };
+      actions.appendChild(dismissBtn);
+
+      area.appendChild(box);
+    });
   }
 
   function toggleDS() {
@@ -476,53 +528,29 @@
   function closeModal() { document.getElementById('login-overlay').style.display = 'none'; }
   function checkLog() { if(!SID || SID === "None" || SID === "") { openModal(); return false; } return true; }
 
-  // ===== 年齢確認 (R18ゲート) =====
-  // ログイン中ユーザーごとに確認結果を保存（同一ブラウザの別ユーザーが確認済み扱いにならないように）
-  var pendingAgeCallback = null;
-  function adultKey() { return 'age_adult_' + (CURRENT_USER || 'guest'); }
-  function minorKey() { return 'age_minor_' + (CURRENT_USER || 'guest'); }
+  // ★安全性強化: ユーザー名・メッセージ本文など「他人が入力した文字列」を
+  // innerHTMLに差し込む前に、必ずこれを通してHTMLとして解釈されないようにする
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = (str === null || str === undefined) ? '' : String(str);
+    return div.innerHTML;
+  }
+
+  // ===== R18表示設定 =====
+  // 年齢確認は「登録時に入力した生年月日」からサーバー側で一度だけ、偽造不可能な形で判定される。
+  // (CURRENT_IS_ADULT / CURRENT_BIRTHDATE_REQUIRED は load() のたびにサーバーの最新値で更新される)
+  var CURRENT_IS_ADULT = false;
+  var CURRENT_BIRTHDATE_REQUIRED = false;
   function r18SettingKey() { return 'r18_display_' + (CURRENT_USER || 'guest'); }
-  function isConfirmedAdult() { try { return localStorage.getItem(adultKey()) === 'true'; } catch(e) { return false; } }
-  function isConfirmedMinor() { try { return localStorage.getItem(minorKey()) === 'true'; } catch(e) { return false; } }
-  // フィードやギャラリーでR18を実際に表示するかどうかは、この設定トグルで一元管理する
-  // （設定がONになるのは年齢確認で成人と確認できた場合のみ）
-  function isR18DisplayEnabled() { try { return localStorage.getItem(r18SettingKey()) === 'true'; } catch(e) { return false; } }
+  // 表示設定そのものは「見るか見ないか」という好みの保存なので、引き続きブラウザ内で管理する。
+  // 一方、そもそも設定をONにできるかどうか(=成人かどうか)は必ずサーバーの判定に従う。
+  function isR18DisplayEnabled() { try { return CURRENT_IS_ADULT && localStorage.getItem(r18SettingKey()) === 'true'; } catch(e) { return false; } }
 
-  function requestAgeVerify(callback) {
-    if (isConfirmedAdult()) { callback(); return; }
-    pendingAgeCallback = callback;
-    document.getElementById('age-birthdate').value = '';
-    document.getElementById('age-err').textContent = '';
-    document.getElementById('age-overlay').style.display = 'flex';
-  }
-  function closeAgeModal() { document.getElementById('age-overlay').style.display = 'none'; pendingAgeCallback = null; }
-  function submitAgeVerify() {
-    var v = document.getElementById('age-birthdate').value;
-    var errEl = document.getElementById('age-err');
-    if (!v) { errEl.textContent = '生年月日を入力してください'; return; }
-    var b = new Date(v);
-    if (isNaN(b.getTime())) { errEl.textContent = '日付が正しくありません'; return; }
-    var today = new Date();
-    var age = today.getFullYear() - b.getFullYear();
-    var m = today.getMonth() - b.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
-    document.getElementById('age-overlay').style.display = 'none';
-    if (age < 18) {
-      try { localStorage.setItem(minorKey(), 'true'); } catch(e) {}
-      try { localStorage.setItem(r18SettingKey(), 'false'); } catch(e) {}
-      pendingAgeCallback = null;
-      reflectR18SettingUI();
-      return;
-    }
-    try { localStorage.setItem(adultKey(), 'true'); } catch(e) {}
-    var cb = pendingAgeCallback; pendingAgeCallback = null;
-    if (cb) cb();
-  }
-
-  // ===== 設定 (R18表示トグル) =====
+  // ===== 設定 (R18表示トグル・生年月日の一度きり登録) =====
   function openSettings() {
     if (!checkLog()) return;
     reflectR18SettingUI();
+    reflectBirthdateUI();
     var delArea = document.getElementById('del-account-confirm-area'); if (delArea) delArea.style.display = 'none';
     document.getElementById('settings-overlay').style.display = 'flex';
   }
@@ -530,24 +558,42 @@
   function reflectR18SettingUI() {
     var cb = document.getElementById('r18-toggle'); var msg = document.getElementById('r18-minor-msg');
     if (!cb) return;
-    if (isConfirmedMinor()) {
+    if (!CURRENT_IS_ADULT) {
       cb.checked = false; cb.disabled = true; msg.style.display = 'block';
     } else {
       cb.checked = isR18DisplayEnabled(); cb.disabled = false; msg.style.display = 'none';
     }
   }
   function onR18ToggleChange(cb) {
-    if (cb.checked) {
-      cb.checked = false; // 確認できるまでは一旦戻しておく
-      requestAgeVerify(function() {
-        try { localStorage.setItem(r18SettingKey(), 'true'); } catch(e) {}
-        reflectR18SettingUI();
-        load();
-      });
-    } else {
-      try { localStorage.setItem(r18SettingKey(), 'false'); } catch(e) {}
-      load();
-    }
+    // 年齢確認は登録時に完了済みなので、ここでは表示するかどうかの好みを保存するだけでよい
+    try { localStorage.setItem(r18SettingKey(), cb.checked ? 'true' : 'false'); } catch(e) {}
+    load();
+  }
+
+  function reflectBirthdateUI() {
+    var area = document.getElementById('birthdate-setup-area');
+    if (!area) return;
+    area.style.display = CURRENT_BIRTHDATE_REQUIRED ? 'block' : 'none';
+  }
+  function submitBirthdateOnce() {
+    var v = document.getElementById('birthdate-setup-input').value;
+    var errEl = document.getElementById('birthdate-setup-err');
+    if (!v) { errEl.textContent = '生年月日を入力してください'; return; }
+    if (!confirm('一度設定すると、二度と変更できません。本当のご自身の生年月日でよろしいですか？')) return;
+    var fd = new FormData(); fd.append('action_type', 'set_birthdate'); fd.append('sid', SID); fd.append('birthdate', v);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/buildvi', true);
+    xhr.onload = function() {
+      try {
+        var data = JSON.parse(xhr.responseText);
+        if (data.status === 'ok') {
+          CURRENT_IS_ADULT = !!data.is_adult; CURRENT_BIRTHDATE_REQUIRED = false;
+          reflectBirthdateUI(); reflectR18SettingUI(); load();
+        } else {
+          errEl.textContent = 'エラー: ' + (data.error || '設定に失敗しました');
+        }
+      } catch(e) { errEl.textContent = '通信エラーが発生しました'; }
+    };
+    xhr.send(fd);
   }
 
   // ===== アカウント削除 =====
@@ -621,16 +667,14 @@
     var name = document.getElementById('login-username').value.trim(); var errEl = document.getElementById('login-err'); errEl.textContent = "";
     if (!name) { errEl.textContent = "名前を入力してください"; return; }
     var fd = new FormData(); fd.append("action_type", _curMode); fd.append("mode", _curMode); fd.append("username", name);
-    var pass = document.getElementById('login-password').value.trim();
     if (_curMode === "register") {
-      var iconFile = document.getElementById('login-icon-file').files[0]; var agreed = document.getElementById('terms-check').checked;
+      var pass = document.getElementById('login-password').value.trim(); var iconFile = document.getElementById('login-icon-file').files[0]; var agreed = document.getElementById('terms-check').checked;
+      var birthdate = document.getElementById('login-birthdate').value;
       if (!pass) { errEl.textContent = "パスワードを設定してください"; return; }
+      if (!birthdate) { errEl.textContent = "生年月日を入力してください"; return; }
       if (!iconFile) { errEl.textContent = "アイコン画像を選んでください"; return; }
       if (!agreed) { errEl.textContent = "利用規約を最後まで読み、同意してください"; return; }
-      fd.append("password", pass); fd.append("icon", iconFile);
-    } else {
-      if (!pass) { errEl.textContent = "パスワードを入力してください"; return; }
-      fd.append("password", pass);
+      fd.append("password", pass); fd.append("icon", iconFile); fd.append("birthdate", birthdate);
     }
     var xhr = new XMLHttpRequest(); xhr.open('POST', '/buildvi', true);
     xhr.onload = function() {
@@ -640,14 +684,14 @@
           SID = data.sid; CURRENT_USER = name;
           document.getElementById('sid-input').value = SID; document.getElementById('disp-username').textContent = name;
           if (history.replaceState) history.replaceState({}, "", "/buildvi?sid=" + SID);
-          document.getElementById('login-btn-area').innerHTML = '<img src="/static/icons/' + escapeHtml(data.icon || 'default.png') + '" class="current-user-icon" title="' + escapeHtml(name) + ' (クリックでアイコン変更)" onclick="openIconModal()" onerror="this.src=\'/static/icons/default.png\'">';
+          var loginArea = document.getElementById('login-btn-area'); loginArea.innerHTML = '';
+          var iconEl = document.createElement('img'); iconEl.src = '/static/icons/' + (data.icon || 'default.png');
+          iconEl.className = 'current-user-icon'; iconEl.title = name + ' (クリックでアイコン変更)';
+          iconEl.onclick = function() { openIconModal(); };
+          iconEl.onerror = function() { this.src = '/static/icons/default.png'; };
+          loginArea.appendChild(iconEl);
           closeModal(); load();
-        } else {
-          if (data.account_deleted) {
-            alert("📩 " + data.error + "\n(本来はここでアカウント削除のお知らせメールをお送りする想定ですが、このアプリにはメール送信の仕組みがないため、この画面でお知らせしています)");
-          }
-          errEl.textContent = "エラー: " + (data.error || "失敗しました");
-        }
+        } else errEl.textContent = "エラー: " + (data.error || "失敗しました");
       } catch(e) { errEl.textContent = "通信エラーが発生しました"; }
     }; xhr.send(fd);
   }
@@ -689,12 +733,11 @@
 
   function doL(id) {
     if(!checkLog()) return;
-    // いいね済みかどうかはサーバー側(posts.jsonのliked_by)が正であり、
-    // ここではブラウザのlocalStorageは一切参照・更新しない。
-    // サーバーが「自分は既に押したか」を判定してplus/minusを決める。
-    var xhr = new XMLHttpRequest(); xhr.open('POST', '/like', true); xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.onload = function() { load(); };
-    xhr.send(JSON.stringify({id: id, sid: SID}));
+    var l; try { l = JSON.parse(localStorage.getItem('lk') || '[]'); } catch(e) { l = []; }
+    var a = (l.indexOf(id) >= 0) ? "minus" : "plus";
+    if (a === "plus") l.push(id); else { var nl = []; for(var i=0;i<l.length;i++) if(l[i]!==id) nl.push(l[i]); l=nl; }
+    try { localStorage.setItem('lk', JSON.stringify(l)); } catch(e) {}
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/like', true); xhr.setRequestHeader('Content-Type', 'application/json'); xhr.onload = function() { load(); }; xhr.send(JSON.stringify({id: id, action: a}));
   }
 
   function setR(id, u) {
@@ -718,7 +761,8 @@
     else if (f.type === "audio") { var lbl = document.createElement('div'); lbl.style.cssText = "font-size:0.8em; color:#555; margin-bottom:6px;"; lbl.textContent = "🎵 ." + ext; wrap.appendChild(lbl); var aud = document.createElement('audio'); aud.controls = true; aud.preload = "metadata"; aud.style.cssText = "width:100%; display:block;"; aud.src = url; wrap.appendChild(aud); }
     else {
       var fileIcon = document.createElement('div'); fileIcon.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-top:4px;";
-      var fileRow = document.createElement('div'); fileRow.style.cssText = "display:inline-flex; align-items:center; gap:8px; padding:8px 12px; background:#f5f5f5; border:1px solid #ddd; border-radius:8px; font-size:0.85em; color:#444;"; fileRow.innerHTML = fileIconSVG() + '<span>' + escapeHtml(f.save_name) + '</span>';
+      var fileRow = document.createElement('div'); fileRow.style.cssText = "display:inline-flex; align-items:center; gap:8px; padding:8px 12px; background:#f5f5f5; border:1px solid #ddd; border-radius:8px; font-size:0.85em; color:#444;"; fileRow.innerHTML = fileIconSVG();
+      var fileNameSpan = document.createElement('span'); fileNameSpan.textContent = f.save_name; fileRow.appendChild(fileNameSpan);
       var dlBtn = document.createElement('a'); dlBtn.href = url; dlBtn.download = f.save_name; dlBtn.textContent = '⬇ ダウンロード'; dlBtn.style.cssText = "display:inline-block; padding:5px 12px; background:#00bcd4; color:#fff; border-radius:6px; font-size:0.8em; font-weight:bold; text-decoration:none;";
       fileIcon.appendChild(fileRow); fileIcon.appendChild(dlBtn); wrap.appendChild(fileIcon);
     }
@@ -727,7 +771,7 @@
     container.appendChild(wrap);
   }
 
-  function renderPost(p, isRep, gDiv) {
+  function renderPost(p, isRep, gDiv, lk) {
     if (!p) return document.createElement('div');
     var wrap = document.createElement('div'); wrap.className = isRep ? 'reply-post' : 'post';
     if (p.thread) wrap.setAttribute('data-thread', p.thread);
@@ -747,17 +791,26 @@
       appendGalleryItem(gDiv, { save_name: p.file.save_name, type: p.file.type, ext: p.file.ext, url: url }, 'by ' + p.user);
     }
 
-    var badge = restriction === "r18" ? ' <span style="color:#ff4081; font-size:0.75em; border:1px solid #ff4081; padding:1px 4px; border-radius:4px;">🔞 R18</span>'
-              : restriction === "sensitive" ? ' <span style="color:#ffb300; font-size:0.75em; border:1px solid #ffb300; padding:1px 4px; border-radius:4px;">⚠️ 閲覧注意</span>'
-              : restriction === "spoiler" ? ' <span style="color:#80d8ff; font-size:0.75em; border:1px solid #80d8ff; padding:1px 4px; border-radius:4px;">🙈 ネタバレ</span>' : '';
+    // 規制バッジは後段のヘッダー生成内で直接組み立てる (restriction変数を参照)
 
-    wrap.innerHTML = '<div class="post-header"><img src="/static/icons/' + escapeHtml(p.icon || 'default.png') + '" class="user-icon" onerror="this.src=\'/static/icons/default.png\'"><b>' + escapeHtml(p.user || 'Unknown') + '</b>' + badge + '<span style="font-size:0.7em; color:#999; margin-left:auto;">' + escapeHtml(formatJST(p.time)) + '</span></div>';
+    var header = document.createElement('div'); header.className = 'post-header';
+    var headIcon = document.createElement('img'); headIcon.src = '/static/icons/' + (p.icon || 'default.png'); headIcon.className = 'user-icon';
+    headIcon.onerror = function() { this.src = '/static/icons/default.png'; };
+    var headName = document.createElement('b'); headName.textContent = p.user || 'Unknown';
+    var headBadge = document.createElement('span');
+    if (restriction === "r18") { headBadge.style.cssText = "color:#ff4081; font-size:0.75em; border:1px solid #ff4081; padding:1px 4px; border-radius:4px; margin-left:6px;"; headBadge.textContent = '🔞 R18'; }
+    else if (restriction === "sensitive") { headBadge.style.cssText = "color:#ffb300; font-size:0.75em; border:1px solid #ffb300; padding:1px 4px; border-radius:4px; margin-left:6px;"; headBadge.textContent = '⚠️ 閲覧注意'; }
+    else if (restriction === "spoiler") { headBadge.style.cssText = "color:#80d8ff; font-size:0.75em; border:1px solid #80d8ff; padding:1px 4px; border-radius:4px; margin-left:6px;"; headBadge.textContent = '🙈 ネタバレ'; }
+    var headTime = document.createElement('span'); headTime.style.cssText = "font-size:0.7em; color:#999; margin-left:auto;"; headTime.textContent = formatJST(p.time);
+    header.appendChild(headIcon); header.appendChild(headName); header.appendChild(headBadge); header.appendChild(headTime);
+    wrap.appendChild(header);
     var body = document.createElement('div'); body.style.paddingLeft = isRep ? '42px' : '55px';
 
-    var isApproved = p.is_approved || false; var isReported = (p.is_reported || false) && !isApproved;
+    // ★通報の状態はサーバー側の真実(p.is_reported)を使う。ブラウザごとのlocalStorageには依存しない。
+    var isReported = p.is_reported || false;
 
-    if (isReported && !isApproved) {
-      var repMsg = document.createElement('div'); repMsg.className = 'reported-msg'; repMsg.innerText = '⚠️ この投稿は通報されたため、管理者の認証を受けるまで本文を一時隠蔽しています。'; body.appendChild(repMsg);
+    if (isReported) {
+      var repMsg = document.createElement('div'); repMsg.className = 'reported-msg'; repMsg.innerText = '⚠️ この投稿は通報されたため、管理者の確認を受けるまで本文を一時隠蔽しています。'; body.appendChild(repMsg);
     } else {
       var buildMsg = function() {
         var m = document.createElement('p'); m.style.cssText = "margin:5px 0; line-height:1.5;"; m.textContent = p.message || ''; return m;
@@ -769,8 +822,8 @@
         var revealText = function() { textWrapper.innerHTML = ''; textWrapper.appendChild(buildMsg()); };
         if (restriction === "r18") {
           tCover.className = "content-cover r18-cover text-cover";
-          tCover.innerHTML = '<span>🔞 R18指定 (本文にポルノ/18禁描写を含みます)</span><span class="sub">クリックして年齢確認の上表示</span>';
-          tCover.onclick = function() { requestAgeVerify(revealText); };
+          tCover.innerHTML = '<span>🔞 R18指定 (本文にポルノ/18禁描写を含みます)</span><span class="sub">クリックして表示</span>';
+          tCover.onclick = revealText;
         } else if (restriction === "sensitive") {
           tCover.className = "content-cover sensitive-cover text-cover";
           tCover.innerHTML = '<span>⚠️ 閲覧注意 (本文)</span><span class="sub">クリックして表示</span>';
@@ -805,7 +858,8 @@
           } else {
             var fileIcon2 = document.createElement('div'); fileIcon2.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-top:10px;";
             var fileRow2 = document.createElement('div'); fileRow2.style.cssText = "display:inline-flex; align-items:center; gap:8px; padding:8px 12px; background:#f5f5f5; border:1px solid #ddd; border-radius:8px; font-size:0.85em; color:#444;";
-            fileRow2.innerHTML = fileIconSVG() + '<span>' + escapeHtml(p.file.original_name || p.file.save_name) + '</span>';
+            fileRow2.innerHTML = fileIconSVG();
+            var fileNameSpan2 = document.createElement('span'); fileNameSpan2.textContent = p.file.original_name || p.file.save_name; fileRow2.appendChild(fileNameSpan2);
             var dlBtn2 = document.createElement('a'); dlBtn2.href = url; dlBtn2.download = p.file.original_name || p.file.save_name; dlBtn2.textContent = '⬇ ダウンロード'; dlBtn2.style.cssText = "display:inline-block; padding:5px 12px; background:#00bcd4; color:#fff; border-radius:6px; font-size:0.8em; font-weight:bold; text-decoration:none;";
             fileIcon2.appendChild(fileRow2); fileIcon2.appendChild(dlBtn2); m.appendChild(fileIcon2);
           }
@@ -815,8 +869,8 @@
         // オプションに応じた遮蔽ワンクッションカバーの生成
         if (restriction === "r18") {
           var cover = document.createElement('div'); cover.className = "content-cover r18-cover";
-          cover.innerHTML = '<span>🔞 R18指定 (ポルノ規制メディア)</span><span style="font-size:0.75em; color:#ccc;">クリックして年齢確認の上表示</span>';
-          cover.onclick = function() { requestAgeVerify(function() { mediaWrapper.innerHTML = ''; mediaWrapper.appendChild(buildMedia()); }); };
+          cover.innerHTML = '<span>🔞 R18指定 (ポルノ規制メディア)</span><span style="font-size:0.75em; color:#ccc;">クリックして表示</span>';
+          cover.onclick = function() { mediaWrapper.innerHTML = ''; mediaWrapper.appendChild(buildMedia()); };
           mediaWrapper.appendChild(cover);
         } else if (restriction === "sensitive") {
           var cover = document.createElement('div'); cover.className = "content-cover sensitive-cover";
@@ -836,12 +890,26 @@
       }
     }
 
-    var liked = !!p.liked; // サーバー(posts.json)側の判定を信頼する
+    var liked = (lk.indexOf(p.id) >= 0);
     var actions = document.createElement('div'); actions.style.cssText = "margin-top:10px; font-size:0.8em;";
-    actions.innerHTML = '<span style="color:#00bcd4; cursor:pointer; font-weight:bold;" onclick="setR(\'' + escForOnclick(p.id) + '\',\'' + escForOnclick(p.user || '') + '\')">返信</span>'
-      + '<span style="margin-left:15px; color:' + (liked ? '#ff4081' : '#ccc') + '; cursor:pointer; font-weight:bold;" onclick="doL(\'' + p.id + '\')">❤️ ' + (p.likes || 0) + '</span>'
-      + '<span style="margin-left:15px; color:#ff9800; cursor:pointer; font-weight:bold;" onclick="reportPost(\'' + p.id + '\', ' + isApproved + ')">🚨 通報</span>'
-      + (p.user === CURRENT_USER ? '<span style="margin-left:15px; color:#ff4081; cursor:pointer; font-weight:bold;" onclick="delP(\'' + p.id + '\')">削除</span>' : '');
+
+    var replySpan = document.createElement('span'); replySpan.style.cssText = "color:#00bcd4; cursor:pointer; font-weight:bold;"; replySpan.textContent = '返信';
+    replySpan.onclick = function() { setR(p.id, p.user || ''); };
+    actions.appendChild(replySpan);
+
+    var likeSpan = document.createElement('span'); likeSpan.style.cssText = "margin-left:15px; color:" + (liked ? '#ff4081' : '#ccc') + "; cursor:pointer; font-weight:bold;"; likeSpan.textContent = '❤️ ' + (p.likes || 0);
+    likeSpan.onclick = function() { doL(p.id); };
+    actions.appendChild(likeSpan);
+
+    var reportSpan = document.createElement('span'); reportSpan.style.cssText = "margin-left:15px; color:#ff9800; cursor:pointer; font-weight:bold;"; reportSpan.textContent = '🚨 通報';
+    reportSpan.onclick = function() { reportPost(p.id); };
+    actions.appendChild(reportSpan);
+
+    if (p.user === CURRENT_USER) {
+      var delSpan = document.createElement('span'); delSpan.style.cssText = "margin-left:15px; color:#ff4081; cursor:pointer; font-weight:bold;"; delSpan.textContent = '削除';
+      delSpan.onclick = function() { delP(p.id); };
+      actions.appendChild(delSpan);
+    }
     body.appendChild(actions); wrap.appendChild(body);
     return wrap;
   }
@@ -852,18 +920,41 @@
     var xhr1 = new XMLHttpRequest(); xhr1.open('GET', '/buildvi?get_type=json&sid=' + encodeURIComponent(SID || ''), true);
     xhr1.onload = function() {
       var data; try { data = JSON.parse(xhr1.responseText); } catch(e) { return; }
+      var lk; try { lk = JSON.parse(localStorage.getItem('lk') || '[]'); } catch(e) { lk = []; }
       var pDiv = document.getElementById("post-list"); var gDiv = document.getElementById("media-gallery"); var uCon = document.getElementById("user-container"); var hDiv = document.getElementById("hot-posts");
       pDiv.innerHTML = ""; gDiv.innerHTML = ""; uCon.innerHTML = ""; hDiv.innerHTML = "";
+
+      // ★成人かどうかはサーバー側(生年月日から)の判定を必ず正として扱う
+      CURRENT_IS_ADULT = !!data.is_adult;
+      CURRENT_BIRTHDATE_REQUIRED = !!data.birthdate_required;
+      reflectR18SettingUI(); reflectBirthdateUI();
+
+      // ★DM・通知はサーバーから来た本人分だけをそのまま保持する
+      LATEST_DMS = data.my_dms || {};
+      LATEST_NOTIFICATIONS = data.notifications || [];
+      renderNotifications();
+      var dmModal = document.getElementById('dm-modal');
+      if (dmModal && dmModal.style.display === 'flex') renderDMLog();
 
       var users = data.all.filter(function(u) { return u.type === "user"; });
       for (var i = 0; i < users.length; i++) {
         var u = users[i];
-        uCon.innerHTML += '<div class="user-card" onclick="openDM(\'' + escForOnclick(u.user || '') + '\')"><img src="/static/icons/' + escapeHtml(u.icon || 'default.png') + '" onerror="this.src=\'/static/icons/default.png\'"><span>' + escapeHtml(u.user || '') + '</span></div>';
+        var card = document.createElement('div'); card.className = 'user-card';
+        card.onclick = (function(uname) { return function() { openDM(uname); }; })(u.user || '');
+        var img = document.createElement('img'); img.src = '/static/icons/' + (u.icon || 'default.png');
+        img.onerror = function() { this.src = '/static/icons/default.png'; };
+        var span = document.createElement('span'); span.textContent = u.user || '';
+        card.appendChild(img); card.appendChild(span);
+        uCon.appendChild(card);
       }
 
       var posts = data.all.filter(function(p) { return p.type !== "user"; });
 
+      // 通報が受理されて削除された投稿は、一覧に一切出さない
+      posts = posts.filter(function(p) { return !p.removed_by_report; });
+
       // 「R18を表示する」設定がOFFのユーザーには、R18投稿そのものを一覧から除外する
+      // (成人でないセッションについては、そもそもサーバー側がR18投稿自体を含めていない)
       var isR18Post = function(p) {
         var r = p.content_restriction || (p.is_r18 === true || p.is_r18 === "true" || p.is_r18 === "on" ? "r18" : "none");
         return r === "r18";
@@ -878,51 +969,23 @@
       // 【要件適用】投稿ログをループしながら実際に「投稿されたファイルのみ」をギャラリーに表示
       for (var i = 0; i < reversed.length; i++) {
         var p = reversed[i];
-        pDiv.appendChild(renderPost(p, false, gDiv));
+        pDiv.appendChild(renderPost(p, false, gDiv, lk));
         var reps = replies.filter(function(r) { return r.reply_to === p.id; });
-        for (var j = 0; j < reps.length; j++) pDiv.appendChild(renderPost(reps[j], true, gDiv));
+        for (var j = 0; j < reps.length; j++) pDiv.appendChild(renderPost(reps[j], true, gDiv, lk));
       }
 
       for (var i = 0; i < data.hot.length; i++) {
         var hp = data.hot[i];
-        hDiv.innerHTML += '<div style="margin-bottom:12px; border-left:4px solid #ff4081; padding:8px 12px; background:rgba(255,64,129,0.03); border-radius:0 8px 8px 0;"><div style="font-weight:bold; font-size:0.9em;">' + escapeHtml(hp.user || '') + '</div><div style="font-size:0.8em; color:#555; margin:4px 0;">' + escapeHtml((hp.message || '').substring(0,40)) + '...</div><div style="font-size:0.75em; color:#ff4081; font-weight:bold;">❤️ ' + (parseInt(hp.likes,10) || 0) + ' likes</div></div>';
+        var hCard = document.createElement('div');
+        hCard.style.cssText = "margin-bottom:12px; border-left:4px solid #ff4081; padding:8px 12px; background:rgba(255,64,129,0.03); border-radius:0 8px 8px 0;";
+        var hUser = document.createElement('div'); hUser.style.cssText = "font-weight:bold; font-size:0.9em;"; hUser.textContent = hp.user || '';
+        var hMsg = document.createElement('div'); hMsg.style.cssText = "font-size:0.8em; color:#555; margin:4px 0;"; hMsg.textContent = (hp.message || '').substring(0, 40) + '...';
+        var hLikes = document.createElement('div'); hLikes.style.cssText = "font-size:0.75em; color:#ff4081; font-weight:bold;"; hLikes.textContent = '❤️ ' + (hp.likes || 0) + ' likes';
+        hCard.appendChild(hUser); hCard.appendChild(hMsg); hCard.appendChild(hLikes);
+        hDiv.appendChild(hCard);
       }
       filterPosts();
-      checkMyDMCases();
     }; xhr1.send();
-  }
-
-  var _dmCaseNotified = {};
-  function checkMyDMCases() {
-    if (!SID) return;
-    var xhr = new XMLHttpRequest(); xhr.open('GET', '/dm_case/mine?sid=' + encodeURIComponent(SID), true);
-    xhr.onload = function() {
-      var data; try { data = JSON.parse(xhr.responseText); } catch(e) { return; }
-      if (data.status !== "ok") return;
-      (data.cases || []).forEach(function(c) {
-        if (_dmCaseNotified[c.id]) return;
-        _dmCaseNotified[c.id] = true;
-        var msg = "⚠️ あなたのDMメッセージが通報されました。\n\n"
-          + "対象メッセージ: 「" + c.reported_message.text + "」\n"
-          + "通報理由: " + c.reason + "\n\n"
-          + "このメッセージについて、管理者へ説明（抗議）を提出できます。\n"
-          + "今すぐ抗議内容を入力しますか？（あとで無視することもできます）";
-        if (!confirm(msg)) return;
-        var protest = prompt("抗議内容を入力してください（例: 誤解である理由、経緯など）:");
-        if (!protest) return;
-        var fd = new FormData(); fd.append("sid", SID); fd.append("case_id", c.id); fd.append("protest_text", protest);
-        var xhr2 = new XMLHttpRequest(); xhr2.open('POST', '/dm_case/protest', true);
-        xhr2.onload = function() {
-          try {
-            var d2 = JSON.parse(xhr2.responseText);
-            if (d2.status === "ok") alert("抗議内容を管理者に送信しました。");
-            else alert("エラー: " + (d2.error || "送信に失敗しました"));
-          } catch(e) { alert("通信エラーが発生しました"); }
-        };
-        xhr2.send(fd);
-      });
-    };
-    xhr.send();
   }
 
   window.onload = load;
