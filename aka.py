@@ -173,32 +173,6 @@ def random_filename(length=16, ext=".bin"):
 
 import requests
 
-# GitHubには書かず、Renderの環境変数から安全に読み込む
-BIN_ID = os.environ.get("BIN_ID")
-API_KEY = os.environ.get("API_KEY")
-
-# JSONBinから全体のデータを取得する関数
-def get_store():
-    url = f"https://api.jsonbin.io/v3/b/{BIN_ID}/latest"
-    headers = {"X-Master-Key": API_KEY}
-    try:
-        res = requests.get(url, headers=headers)
-        if res.status_code == 200:
-            return res.json().get("record", {})
-    except Exception as e:
-        print("読み込みエラー:", e)
-    return {}
-
-# JSONBinへ全体のデータを更新する関数
-def update_store(key, value):
-    store = get_store()
-    store[key] = value
-    url = f"https://api.jsonbin.io/v3/b/{BIN_ID}"
-    headers = {"Content-Type": "application/json", "X-Master-Key": API_KEY}
-    try:
-        requests.put(url, json=store, headers=headers)
-    except Exception as e:
-        print("保存エラー:", e)
 
 # --- ここから各データの読み書き（コードの既存部分を差し替え） ---
 # ─────────────────────────────────────────
