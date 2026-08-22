@@ -956,7 +956,7 @@ def classroom_page():
 fname = random_filename(16, ".png")
 if not save_uploaded_icon(icon_file, fname):  # ← ここだけ！(os.path.joinを外す)
     return flask.jsonify({"status": "error", "error": "画像ファイルとして認識できません"}), 400
-                data[name] = {
+    data[name] = {
                     "icon": fname,
                     "pwhash": generate_password_hash(password),
                     "violation_count": 0,
