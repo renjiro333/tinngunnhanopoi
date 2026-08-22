@@ -888,7 +888,7 @@ def classroom_page():
             if not icon_file:
                 return flask.jsonify({"status": "error", "error": "no file"}), 400
             fname = random_filename(16, ".png")
-            if not save_uploaded_icon(icon_file, os.path.join(ICON_DIR, fname)):
+            if not save_uploaded_icon(icon_file, fname):
                 return flask.jsonify({"status": "error", "error": "画像ファイルとして認識できません"}), 400
             user["icon_filename"] = fname
             data = loaddata()
@@ -920,38 +920,25 @@ def classroom_page():
             if not name:
                 return flask.jsonify({"status": "error", "error": "ユーザー名を入力してください"}), 400
 
-if mode == "register":
-    icon_file = flask.request.files.get("icon")
-    if not icon_file or name in data:
-        return flask.jsonify({"status": "error", "error": "register failed"}), 400
-    if len(password) < 4:
-        return flask.jsonify({"status": "error", "error": "パスワードは4文字以上にしてください"}), 400
-    fname = random_filename(16, ".png")
-    if not save_uploaded_icon(icon_file, fname):
-        return flask.jsonify({"status": "error", "error": "画像ファイルとして認識できません"}), 400
-    data[name] = {
-        "icon": fname,
-        "pwhash": generate_password_hash(password),
-        "violation_count": 0,
-        "restricted": False,
-        "pending_deletion": False,
-    }
-    save_data(data)
-    
-# アイコン変更の処理
-fname = random_filename(16, ".png")
-if not save_uploaded_icon(icon_file, fname):  # ← ここだけ！(os.path.joinを外す)
-    return flask.jsonify({"status": "error", "error": "画像ファイルとして認識できません"}), 400
-    data[name] = {
+            if mode == "register":
+                icon_file = flask.request.files.get("icon")
+                if not icon_file or name in data:
+                    return flask.jsonify({"status": "error", "error": "register failed"}), 400
+                if len(password) < 4:
+                    return flask.jsonify({"status": "error", "error": "パスワードは4文字以上にしてください"}), 400
+                fname = random_filename(16, ".png")
+                if not save_uploaded_icon(icon_file, fname):
+                    return flask.jsonify({"status": "error", "error": "画像ファイルとして認識できません"}), 400
+                data[name] = {
                     "icon": fname,
                     "pwhash": generate_password_hash(password),
                     "violation_count": 0,
                     "restricted": False,
                     "pending_deletion": False,
                 }
-save_data(data)
+                save_data(data)
             else:
-                # ブルートフォース対策: 同一ユーザー名への短時間の大量ログイン失敗を制限
+                # ブルートフォース対策
                 if is_rate_limited(LOGIN_ATTEMPTS, name):
                     return flask.jsonify({
                         "status": "error",
@@ -967,9 +954,6 @@ save_data(data)
                     return flask.jsonify({"status": "error", "error": "ユーザー名またはパスワードが違います"}), 401
                 clear_attempts(LOGIN_ATTEMPTS, name)
 
-                # 通報が認定され、処分保留中のアカウントは、この次のログインのタイミングで削除する
-                # （本来はここでメール通知を送るべきだが、このアプリにはメール送信基盤がないため、
-                #   ログイン試行時にその場でお知らせを返すことで代替している）
                 if user_record.get("pending_deletion"):
                     del data[name]
                     save_data(data)
@@ -992,13 +976,12 @@ save_data(data)
                 if not fname:
                     ps = loadposts()
                     fname = next((p["icon"] for p in reversed(ps) if p.get("user") == name), "default.png")
-            # 以前は uuid4()[:8] （約32bit）で、総当たりにやや弱かったため、
-            # secrets.token_hex を使い暗号学的に安全な192bitのSIDに強化
+
             new_sid = secrets.token_hex(24)
             USER_SESSIONS[new_sid] = {"student_name": name, "icon_filename": fname}
             return flask.jsonify({"status": "ok", "sid": new_sid, "icon": fname})
 
-        # 投稿処理 (フロント追加オプション機能対応版)
+        # 投稿処理
         elif action_type == "post":
             try:
                 sid = flask.request.form.get("sid")
@@ -1010,8 +993,6 @@ save_data(data)
                 post_file = flask.request.files.get("post_file")
                 msg = flask.request.form.get("message", "").strip()
                 reply_to = flask.request.form.get("reply_to", "").strip() or None
-                
-                # 新機能パラメータの受け取り
                 thread = flask.request.form.get("thread", "").strip()
                 content_restriction = flask.request.form.get("content_restriction", "none").strip()
                 is_highlight = flask.request.form.get("is_highlight", "false")
@@ -1036,18 +1017,20 @@ save_data(data)
 
                 if post_file and post_file.filename:
                     ext = os.path.splitext(post_file.filename)[1].lower()
-
-
                     raw_base = os.path.splitext(post_file.filename)[0]
                     safe_base = re.sub(r'[\\/:*?"<>|\x00-\x1f]', '_', raw_base).strip() or "file"
                     suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
                     sv_name = f"{safe_base}_{suffix}{ext}"
                     post_file.save(os.path.join(UPLOAD_DIR, sv_name))
 
-                    if ext in (".mp4", ".webm"): ftype = "video"
-                    elif ext in (".mp3", ".wav"): ftype = "audio"
-                    elif ext in (".jpg", ".jpeg", ".png", ".gif", ".webp"): ftype = "image"
-                    else: ftype = "other"
+                    if ext in (".mp4", ".webm"):
+                        ftype = "video"
+                    elif ext in (".mp3", ".wav"):
+                        ftype = "audio"
+                    elif ext in (".jpg", ".jpeg", ".png", ".gif", ".webp"):
+                        ftype = "image"
+                    else:
+                        ftype = "other"
 
                     new_post["file"] = {"save_name": sv_name, "type": ftype, "ext": ext, "original_name": post_file.filename}
 
@@ -1059,7 +1042,6 @@ save_data(data)
                 print("投稿エラー:", str(e))
                 return flask.jsonify({"status": "error", "error": str(e)}), 500
 
-        # その他のアクション
         else:
             return flask.jsonify({"status": "error", "error": "不明なaction_type"}), 400
 
@@ -1077,9 +1059,8 @@ save_data(data)
         for p in all_posts:
             item = p.copy()
             item["likes"] = int(item.get("likes", 0))
-            if "type" in item: del item["type"]
-            # liked_by は全ユーザー名の一覧なので、クライアントには
-            # 「自分がいいね済みかどうか」だけを渡し、生のリストは渡さない
+            if "type" in item:
+                del item["type"]
             liked_by = item.pop("liked_by", None) or []
             item["liked"] = bool(req_username and req_username in liked_by)
             item["is_approved"] = (item.get("report_status") == "approved")
@@ -1094,7 +1075,6 @@ save_data(data)
 
         return flask.jsonify({"all": formatted_list, "hot": hot_posts, "access_count": access_count})
 
-    # 通常のHTMLレンダリング
     sid = flask.request.args.get("sid")
     user_session = USER_SESSIONS.get(sid) if sid else None
     reg_list = list(user_dict.keys())
@@ -1107,8 +1087,6 @@ save_data(data)
         registered_users=reg_list,
         access_count=access_count,
     )
-
-
 # ─────────────────────────────────────────
 # 🛠️ 【補完】いいね用非同期ルート
 # ─────────────────────────────────────────
