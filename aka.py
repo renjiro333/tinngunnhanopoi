@@ -990,6 +990,29 @@ def classroom_page():
             USER_SESSIONS[new_sid] = {"student_name": name, "icon_filename": fname}
             return flask.jsonify({"status": "ok", "sid": new_sid, "icon": get_icon_url(fname)})
 
+        elif action_type == "set_birthdate":
+            sid = flask.request.form.get("sid")
+            user = USER_SESSIONS.get(sid)
+            if not user:
+                return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
+            name = user["student_name"]
+            birthdate = flask.request.form.get("birthdate")
+            if not birthdate:
+                return flask.jsonify({"status": "error", "error": "生年月日を入力してください"}), 400
+            data = loaddata()
+            if name not in data:
+                return flask.jsonify({"status": "error", "error": "ユーザーが見つかりません"}), 404
+            data[name]["birthdate"] = birthdate
+            save_data(data)
+            # 年齢判定（18歳以上か）
+            is_adult = False
+            try:
+                birth_year = int(birthdate.split("-")[0])
+                is_adult = (datetime.now().year - birth_year >= 18)
+            except:
+                pass
+            return flask.jsonify({"status": "ok", "is_adult": is_adult})
+        
         # アカウント削除（← 新規追加）
         elif action_type == "delete_account":
             sid = flask.request.form.get("sid")
