@@ -943,6 +943,7 @@ def classroom_page():
                     "violation_count": 0,
                     "restricted": False,
                     "pending_deletion": False,
+                    "birthdate": flask.request.form.get("birthdate"),  # ← 追加
                 }
                 save_data(data)
             else:
@@ -988,6 +989,27 @@ def classroom_page():
             new_sid = secrets.token_hex(24)
             USER_SESSIONS[new_sid] = {"student_name": name, "icon_filename": fname}
             return flask.jsonify({"status": "ok", "sid": new_sid, "icon": get_icon_url(fname)})
+
+        # アカウント削除（← 新規追加）
+        elif action_type == "delete_account":
+            sid = flask.request.form.get("sid")
+            user = USER_SESSIONS.get(sid)
+            if not user:
+                return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
+            name = user["student_name"]
+            data = loaddata()
+            if name not in data:
+                return flask.jsonify({"status": "error", "error": "ユーザーが見つかりません"}), 404
+            # ユーザー削除
+            del data[name]
+            save_data(data)
+            # 投稿も削除
+            ps = loadposts()
+            ps = [p for p in ps if p.get("user") != name]
+            saveposts(ps)
+            # セッション削除
+            USER_SESSIONS.pop(sid, None)
+            return flask.jsonify({"status": "ok"})
 
         # 投稿処理
         elif action_type == "post":
@@ -1073,8 +1095,6 @@ def classroom_page():
             item["liked"] = bool(req_username and req_username in liked_by)
             item["is_approved"] = (item.get("report_status") == "approved")
             item["is_reported"] = (item.get("report_status") == "pending")
-            # 投稿には保存時点のアイコンのファイル名しか入っていないため、
-            # クライアントに返す直前にここで実際のURL(Supabase/ローカル)へ変換する
             item["icon"] = get_icon_url(item.get("icon"))
             formatted_list.append(item)
 
@@ -1084,7 +1104,29 @@ def classroom_page():
         valid_hot_posts = [p for p in all_posts if int(p.get("likes", 0)) > 0]
         hot_posts = sorted(valid_hot_posts, key=lambda x: int(x.get("likes", 0)), reverse=True)[:5]
 
-        return flask.jsonify({"all": formatted_list, "hot": hot_posts, "access_count": access_count})
+        # ★ 成人判定をレスポンスに追加（← ここを修正）
+        is_adult = False
+        birthdate_required = False
+        if req_user:
+            name = req_user["student_name"]
+            user_data = loaddata().get(name, {})
+            birthdate = user_data.get("birthdate")
+            if birthdate:
+                try:
+                    birth_year = int(birthdate.split("-")[0])
+                    is_adult = (datetime.now().year - birth_year >= 18)
+                except:
+                    pass
+            else:
+                birthdate_required = True
+
+        return flask.jsonify({
+            "all": formatted_list,
+            "hot": hot_posts,
+            "access_count": access_count,
+            "is_adult": is_adult,
+            "birthdate_required": birthdate_required
+        })
 
     sid = flask.request.args.get("sid")
     user_session = USER_SESSIONS.get(sid) if sid else None
