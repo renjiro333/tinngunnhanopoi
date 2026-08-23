@@ -130,38 +130,48 @@
     </div>
     <form id="auth-form" onsubmit="event.preventDefault(); doLogin(); return false;">
     <input type="text" id="login-username" name="username" autocomplete="username" placeholder="名前を入力" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; margin-bottom:10px;">
-  <!-- パスワードは常に表示（mi-sectの外に出してもOK） -->
+<!-- パスワードは mi-sect の外に出す -->
 <input type="password" id="login-password" name="password" autocomplete="new-password" placeholder="パスワードを設定" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; margin-bottom:10px;">
 
 <div id="mi-sect">
-    <!-- アイコン・生年月日・規約だけ（新規登録時のみ表示） -->
-    <div id="extra-fields">
-        <label style="font-size:0.8em; color:#555; display:block; margin-bottom:4px;">生年月日</label>
-        <input type="date" id="login-birthdate" name="birthdate" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; margin-bottom:10px;">
-        <label class="custom-file-btn">
-            <input type="file" id="login-icon-file" accept="image/*" onchange="upName(this,'mn-icon')">アイコン選択
-        </label>
-        <span id="mn-icon" style="font-size:0.7em; color:#888; margin-left:5px;"></span>
-        <div style="margin-top:12px;">
-            <span style="font-size:0.8em; font-weight:bold; color:#555;">📜 利用規約</span>
-            <div class="terms-box" id="terms-box" onscroll="checkTermsScroll(this)"></div>
-            <div class="terms-agree-area">
-                <input type="checkbox" id="terms-check" disabled>
-                <label for="terms-check">規約をすべて確認し同意しました</label>
-            </div>
-        </div>
+  <div id="extra-fields">
+    <label style="font-size:0.8em; color:#555; display:block; margin-bottom:4px;">生年月日</label>
+    <input type="date" id="login-birthdate" name="birthdate" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; margin-bottom:10px;">
+    <label class="custom-file-btn">
+      <input type="file" id="login-icon-file" accept="image/*" onchange="upName(this,'mn-icon')">アイコン選択
+    </label>
+    <span id="mn-icon" style="font-size:0.7em; color:#888; margin-left:5px;"></span>
+    <div style="margin-top:12px;">
+      <span style="font-size:0.8em; font-weight:bold; color:#555;">📜 利用規約</span>
+      <div class="terms-box" id="terms-box" onscroll="checkTermsScroll(this)"></div>
+      <div class="terms-agree-area">
+        <input type="checkbox" id="terms-check" disabled>
+        <label for="terms-check">規約をすべて確認し同意しました</label>
+      </div>
     </div>
+  </div>
+</div>
+    <p id="login-err" style="color:red; font-size:0.85em; min-height:1.2em; margin-top:8px;"></p>
+    <button type="submit" style="width:100%; padding:12px; background:#00bcd4; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; margin-top:5px;">入室する</button>
+    </form>
+  </div>
 </div>
 
-    </form>  <!-- ← ここを追加 -->
-
-      
 <div id="icon-overlay" style="display:none;">
   <div class="icon-container" style="text-align:center;">
     <span style="position:absolute; top:10px; right:15px; cursor:pointer; font-size:1.5em;" onclick="closeIconModal()">×</span>
     <h3 style="margin-top:0;">アイコン変更</h3>
     <img id="icon-preview" src="" style="width:80px; height:80px; border-radius:50%; border:3px solid #00bcd4; object-fit:cover; margin-bottom:15px;">
     <div>
+      <label class="custom-file-btn">
+        <input type="file" id="icon-change-file" accept="image/*" onchange="previewIcon(this)">新しいアイコンを選ぶ
+      </label>
+    </div>
+    <p id="icon-err" style="color:red; font-size:0.85em; min-height:1.2em; margin-top:8px;"></p>
+    <button onclick="doChangeIcon()" style="width:100%; padding:12px; background:#00bcd4; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; margin-top:10px;">変更する</button>
+  </div>
+</div>
+
 <div id="settings-overlay">
   <div class="settings-container">
     <span style="position:absolute; top:10px; right:15px; cursor:pointer; font-size:1.5em;" onclick="closeSettings()">×</span>
@@ -660,9 +670,9 @@
 function swM(m) {
     _curMode = m;
     var isR = (m === 'register');
-    // パスワード欄は常に表示する
+    // mi-sect は常に表示（パスワードは外に出したのでOK）
     document.getElementById('mi-sect').style.display = 'block';
-    // 新規登録時のみ追加項目（アイコン・生年月日・規約）を表示
+    // 新規登録時のみ extra-fields を表示
     var extra = document.getElementById('extra-fields');
     if (extra) {
         extra.style.display = isR ? 'block' : 'none';
