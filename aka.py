@@ -947,7 +947,7 @@ def classroom_page():
                     "violation_count": 0,
                     "restricted": False,
                     "pending_deletion": False,
-                    "birthdate": flask.request.form.get("birthdate"),  # ← 追加
+                    "birthdate": flask.request.form.get("birthdate"),
                 }
                 save_data(data)
             else:
@@ -994,6 +994,7 @@ def classroom_page():
             USER_SESSIONS[new_sid] = {"student_name": name, "icon_filename": fname}
             return flask.jsonify({"status": "ok", "sid": new_sid, "icon": get_icon_url(fname)})
 
+        # 生年月日設定（R18用）
         elif action_type == "set_birthdate":
             sid = flask.request.form.get("sid")
             user = USER_SESSIONS.get(sid)
@@ -1016,33 +1017,41 @@ def classroom_page():
             except:
                 pass
             return flask.jsonify({"status": "ok", "is_adult": is_adult})
-        
-        # アカウント削除（← 新規追加）
-elif action_type == "delete_account":
-    print("=== delete_account 開始 ===")
-    sid = flask.request.form.get("sid")
-    print(f"sid: {sid}")
-    user = USER_SESSIONS.get(sid)
-    if not user:
-        print("user not found")
-        return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
-    name = user["student_name"]
-    print(f"削除対象ユーザー: {name}")
-    data = loaddata()
-    print(f"削除前のデータ: {data}")
-    if name not in data:
-        print("ユーザーがデータに存在しない")
-        return flask.jsonify({"status": "error", "error": "ユーザーが見つかりません"}), 404
-    del data[name]
-    print(f"削除後のデータ: {data}")
-    save_data(data)
-    print("save_data 実行完了")
-    ps = loadposts()
-    ps = [p for p in ps if p.get("user") != name]
-    saveposts(ps)
-    USER_SESSIONS.pop(sid, None)
-    print("=== delete_account 終了 ===")
-    return flask.jsonify({"status": "ok"})
+
+        # アカウント削除（デバッグプリント付き）
+        elif action_type == "delete_account":
+            print("=== delete_account 開始 ===")
+            sid = flask.request.form.get("sid")
+            print(f"sid: {sid}")
+            user = USER_SESSIONS.get(sid)
+            if not user:
+                print("user not found")
+                return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
+            name = user["student_name"]
+            print(f"削除対象ユーザー: {name}")
+            data = loaddata()
+            print(f"削除前のデータ: {data}")
+            if name not in data:
+                print("ユーザーがデータに存在しない")
+                return flask.jsonify({"status": "error", "error": "ユーザーが見つかりません"}), 404
+            del data[name]
+            print(f"削除後のデータ: {data}")
+            save_data(data)
+            print("save_data 実行完了")
+            ps = loadposts()
+            ps = [p for p in ps if p.get("user") != name]
+            saveposts(ps)
+            USER_SESSIONS.pop(sid, None)
+            print("=== delete_account 終了 ===")
+            return flask.jsonify({"status": "ok"})
+
+        # 投稿処理
+        elif action_type == "post":
+            try:
+                sid = flask.request.form.get("sid")
+                user = USER_SESSIONS.get(sid)
+                if not user:
+                    return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
 
                 ps = loadposts()
                 post_file = flask.request.files.get("post_file")
@@ -1129,7 +1138,7 @@ elif action_type == "delete_account":
         valid_hot_posts = [p for p in all_posts if int(p.get("likes", 0)) > 0]
         hot_posts = sorted(valid_hot_posts, key=lambda x: int(x.get("likes", 0)), reverse=True)[:5]
 
-        # ★ 成人判定をレスポンスに追加（← ここを修正）
+        # 成人判定
         is_adult = False
         birthdate_required = False
         if req_user:
