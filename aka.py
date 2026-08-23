@@ -222,7 +222,9 @@ def loaddata():
         return {}
 
 def save_data(data):
+    print(f"save_data 呼び出し: supabase is {supabase}")
     if supabase is None:
+        print("save_data: supabase is None, 保存をスキップ")
         return
     try:
         rows = []
@@ -234,12 +236,14 @@ def save_data(data):
                 "violation_count": info.get("violation_count", 0),
                 "restricted": info.get("restricted", False),
                 "pending_deletion": info.get("pending_deletion", False),
-                "birthdate": info.get("birthdate"),  # ← 追加
+                "birthdate": info.get("birthdate"),
             })
+        print(f"save_data: upsert 実行前 rows: {rows}")
         if rows:
             supabase.table("users").upsert(rows).execute()
+            print("save_data: upsert 成功")
     except Exception as e:
-        print("save_dataエラー:", e)
+        print(f"save_dataエラー: {e}")
 
 def loadposts():
     """posts テーブル → リスト"""
@@ -1014,28 +1018,31 @@ def classroom_page():
             return flask.jsonify({"status": "ok", "is_adult": is_adult})
         
         # アカウント削除（← 新規追加）
-        elif action_type == "delete_account":
-            sid = flask.request.form.get("sid")
-            user = USER_SESSIONS.get(sid)
-            if not user:
-                return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
-            name = user["student_name"]
-            data = loaddata()
-            if name not in data:
-                return flask.jsonify({"status": "error", "error": "ユーザーが見つかりません"}), 404
-            del data[name]
-            save_data(data)
-            ps = loadposts()
-            ps = [p for p in ps if p.get("user") != name]
-            saveposts(ps)
-            USER_SESSIONS.pop(sid, None)
-            return flask.jsonify({"status": "ok"})
-        elif action_type == "post":
-            try:
-                sid = flask.request.form.get("sid")
-                user = USER_SESSIONS.get(sid)
-                if not user:
-                    return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
+elif action_type == "delete_account":
+    print("=== delete_account 開始 ===")
+    sid = flask.request.form.get("sid")
+    print(f"sid: {sid}")
+    user = USER_SESSIONS.get(sid)
+    if not user:
+        print("user not found")
+        return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
+    name = user["student_name"]
+    print(f"削除対象ユーザー: {name}")
+    data = loaddata()
+    print(f"削除前のデータ: {data}")
+    if name not in data:
+        print("ユーザーがデータに存在しない")
+        return flask.jsonify({"status": "error", "error": "ユーザーが見つかりません"}), 404
+    del data[name]
+    print(f"削除後のデータ: {data}")
+    save_data(data)
+    print("save_data 実行完了")
+    ps = loadposts()
+    ps = [p for p in ps if p.get("user") != name]
+    saveposts(ps)
+    USER_SESSIONS.pop(sid, None)
+    print("=== delete_account 終了 ===")
+    return flask.jsonify({"status": "ok"})
 
                 ps = loadposts()
                 post_file = flask.request.files.get("post_file")
