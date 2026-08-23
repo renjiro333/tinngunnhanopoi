@@ -187,6 +187,12 @@ print(f"SUPABASE_SERVICE_KEY: {'設定あり' if SUPABASE_SERVICE_KEY else '未�
 if SUPABASE_SERVICE_KEY:
     print(f"  → 先頭5文字: {SUPABASE_SERVICE_KEY[:5]}...")
 
+if SUPABASE_URL and SUPABASE_SERVICE_KEY:
+    supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+else:
+    supabase = None  # ← これを追加！
+    print("⚠️ SUPABASE_URL または SUPABASE_SERVICE_KEY が未設定です。")
+    
 # ─────────────────────────────────────────
 # ユーティリティ（再定義しておく）
 # ─────────────────────────────────────────
