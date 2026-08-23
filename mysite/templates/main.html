@@ -663,14 +663,21 @@
     }; xhr.send(fd);
   }
 
-  function swM(m) {
-    _curMode = m; var isR = (m === 'register');
-    document.getElementById('mi-sect').style.display = isR ? 'block' : 'none';
+function swM(m) {
+    _curMode = m;
+    var isR = (m === 'register');
+    // パスワード欄は常に表示する
+    document.getElementById('mi-sect').style.display = 'block';
+    // 新規登録時のみ追加項目（アイコン・生年月日・規約）を表示
+    var extra = document.getElementById('extra-fields');
+    if (extra) {
+        extra.style.display = isR ? 'block' : 'none';
+    }
     document.getElementById('mt-reg').style.color = isR ? '#00bcd4' : '#888';
     document.getElementById('mt-log').style.color = isR ? '#888' : '#00bcd4';
     document.getElementById('dynamic-title').innerText = isR ? "新規登録" : "ログイン";
     document.getElementById('login-password').autocomplete = isR ? 'new-password' : 'current-password';
-  }
+}
 
   function upName(input, targetId) { document.getElementById(targetId).innerText = input.files.length > 0 ? input.files[0].name : ""; }
   function cancelR() { document.getElementById("rep-input").value = ""; document.getElementById("rep-box").style.display = "none"; }
