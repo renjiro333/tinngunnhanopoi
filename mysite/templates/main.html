@@ -234,7 +234,7 @@
       <div class="user-status-area">
         <div id="login-btn-area">
           {% if sid and sid != 'None' %}
-            <img src="/static/icons/{{ user_icon_filename }}" class="current-user-icon" title="{{ username }} (クリックでアイコン変更)" onclick="openIconModal()" onerror="this.src='/static/icons/default.png'">
+            <img src="{{ user_icon_filename if (user_icon_filename.startswith('http') or user_icon_filename.startswith('/')) else '/static/icons/' + user_icon_filename }}" class="current-user-icon" title="{{ username }} (クリックでアイコン変更)" onclick="openIconModal()" onerror="this.src='/static/icons/default.png'">
           {% else %}
             <button onclick="openModal()" style="background:#00bcd4; color:#fff; border:none; padding:5px 15px; border-radius:15px; cursor:pointer;">ログイン</button>
           {% endif %}
@@ -536,6 +536,18 @@
     return div.innerHTML;
   }
 
+  // ★互換性修正: アイコンの保存先がローカル(/static/icons/)か、Supabase Storage等の
+  // 外部URLかをここで吸収する。サーバーから来た値が既に http(s) から始まる完全なURLなら
+  // そのまま使い、そうでなければ従来通りローカルパスを組み立てる。
+  // これにより、サーバー側のアイコン保存方式が将来変わっても main.html 側の変更は不要になる。
+  function iconUrl(value) {
+    if (!value) return '/static/icons/default.png';
+    // サーバーが既に完成したURL・絶対パス("http..."や"/static/...")を返してきた場合はそのまま使う。
+    // ただのファイル名(例: "abc123.png")の場合だけ、従来通りローカルのアイコンパスを組み立てる。
+    if (/^https?:\/\//i.test(value) || value.charAt(0) === '/') return value;
+    return '/static/icons/' + value;
+  }
+
   // ===== R18表示設定 =====
   // 年齢確認は「登録時に入力した生年月日」からサーバー側で一度だけ、偽造不可能な形で判定される。
   // (CURRENT_IS_ADULT / CURRENT_BIRTHDATE_REQUIRED は load() のたびにサーバーの最新値で更新される)
@@ -644,7 +656,7 @@
         var data = JSON.parse(xhr.responseText);
         if (data.status === 'ok') {
           var imgs = document.querySelectorAll('.current-user-icon');
-          for (var i = 0; i < imgs.length; i++) imgs[i].src = '/static/icons/' + data.icon + '?t=' + Date.now();
+          for (var i = 0; i < imgs.length; i++) imgs[i].src = iconUrl(data.icon) + '?t=' + Date.now();
           closeIconModal(); load();
         } else errEl.textContent = 'エラー: ' + (data.error || '失敗しました');
       } catch(e) { errEl.textContent = '通信エラー'; }
@@ -685,7 +697,7 @@
           document.getElementById('sid-input').value = SID; document.getElementById('disp-username').textContent = name;
           if (history.replaceState) history.replaceState({}, "", "/buildvi?sid=" + SID);
           var loginArea = document.getElementById('login-btn-area'); loginArea.innerHTML = '';
-          var iconEl = document.createElement('img'); iconEl.src = '/static/icons/' + (data.icon || 'default.png');
+          var iconEl = document.createElement('img'); iconEl.src = iconUrl(data.icon);
           iconEl.className = 'current-user-icon'; iconEl.title = name + ' (クリックでアイコン変更)';
           iconEl.onclick = function() { openIconModal(); };
           iconEl.onerror = function() { this.src = '/static/icons/default.png'; };
@@ -794,7 +806,7 @@
     // 規制バッジは後段のヘッダー生成内で直接組み立てる (restriction変数を参照)
 
     var header = document.createElement('div'); header.className = 'post-header';
-    var headIcon = document.createElement('img'); headIcon.src = '/static/icons/' + (p.icon || 'default.png'); headIcon.className = 'user-icon';
+    var headIcon = document.createElement('img'); headIcon.src = iconUrl(p.icon); headIcon.className = 'user-icon';
     headIcon.onerror = function() { this.src = '/static/icons/default.png'; };
     var headName = document.createElement('b'); headName.textContent = p.user || 'Unknown';
     var headBadge = document.createElement('span');
@@ -941,7 +953,7 @@
         var u = users[i];
         var card = document.createElement('div'); card.className = 'user-card';
         card.onclick = (function(uname) { return function() { openDM(uname); }; })(u.user || '');
-        var img = document.createElement('img'); img.src = '/static/icons/' + (u.icon || 'default.png');
+        var img = document.createElement('img'); img.src = iconUrl(u.icon);
         img.onerror = function() { this.src = '/static/icons/default.png'; };
         var span = document.createElement('span'); span.textContent = u.user || '';
         card.appendChild(img); card.appendChild(span);
