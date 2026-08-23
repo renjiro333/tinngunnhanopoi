@@ -686,39 +686,93 @@ function swM(m) {
   function upName(input, targetId) { document.getElementById(targetId).innerText = input.files.length > 0 ? input.files[0].name : ""; }
   function cancelR() { document.getElementById("rep-input").value = ""; document.getElementById("rep-box").style.display = "none"; }
 
-  function doLogin() {
-    var name = document.getElementById('login-username').value.trim(); var errEl = document.getElementById('login-err'); errEl.textContent = "";
-    if (!name) { errEl.textContent = "名前を入力してください"; return; }
-    var fd = new FormData(); fd.append("action_type", _curMode); fd.append("mode", _curMode); fd.append("username", name);
-    if (_curMode === "register") {
-      var pass = document.getElementById('login-password').value.trim(); var iconFile = document.getElementById('login-icon-file').files[0]; var agreed = document.getElementById('terms-check').checked;
-      var birthdate = document.getElementById('login-birthdate').value;
-      if (!pass) { errEl.textContent = "パスワードを設定してください"; return; }
-      if (!birthdate) { errEl.textContent = "生年月日を入力してください"; return; }
-      if (!iconFile) { errEl.textContent = "アイコン画像を選んでください"; return; }
-      if (!agreed) { errEl.textContent = "利用規約を最後まで読み、同意してください"; return; }
-      fd.append("password", pass); fd.append("icon", iconFile); fd.append("birthdate", birthdate);
+function doLogin() {
+    var name = document.getElementById('login-username').value.trim();
+    var errEl = document.getElementById('login-err');
+    errEl.textContent = "";
+    if (!name) {
+        errEl.textContent = "名前を入力してください";
+        return;
     }
-    var xhr = new XMLHttpRequest(); xhr.open('POST', '/buildvi', true);
-    xhr.onload = function() {
-      try {
-        var data = JSON.parse(xhr.responseText);
-        if (data.status === "ok") {
-          SID = data.sid; CURRENT_USER = name;
-          document.getElementById('sid-input').value = SID; document.getElementById('disp-username').textContent = name;
-          if (history.replaceState) history.replaceState({}, "", "/buildvi?sid=" + SID);
-          var loginArea = document.getElementById('login-btn-area'); loginArea.innerHTML = '';
-          var iconEl = document.createElement('img'); iconEl.src = iconUrl(data.icon);
-          iconEl.className = 'current-user-icon'; iconEl.title = name + ' (クリックでアイコン変更)';
-          iconEl.onclick = function() { openIconModal(); };
-          iconEl.onerror = function() { this.src = '/static/icons/default.png'; };
-          loginArea.appendChild(iconEl);
-          closeModal(); load();
-        } else errEl.textContent = "エラー: " + (data.error || "失敗しました");
-      } catch(e) { errEl.textContent = "通信エラーが発生しました"; }
-    }; xhr.send(fd);
-  }
+    var pass = document.getElementById('login-password').value.trim();
+    if (!pass) {
+        errEl.textContent = "パスワードを入力してください";
+        return;
+    }
 
+    var fd = new FormData();
+    fd.append("action_type", _curMode);
+    fd.append("mode", _curMode);
+    fd.append("username", name);
+    fd.append("password", pass);
+
+    if (_curMode === "register") {
+        var iconFile = document.getElementById('login-icon-file').files[0];
+        var agreed = document.getElementById('terms-check').checked;
+        var birthdate = document.getElementById('login-birthdate').value;
+        if (!birthdate) {
+            errEl.textContent = "生年月日を入力してください";
+            return;
+        }
+        if (!iconFile) {
+            errEl.textContent = "アイコン画像を選んでください";
+            return;
+        }
+        if (!agreed) {
+            errEl.textContent = "利用規約を最後まで読み、同意してください";
+            return;
+        }
+        fd.append("icon", iconFile);
+        fd.append("birthdate", birthdate);
+    }
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/buildvi', true);
+    xhr.onload = function() {
+        try {
+            var data = JSON.parse(xhr.responseText);
+            if (data.status === "ok") {
+                SID = data.sid;
+                CURRENT_USER = name;
+                document.getElementById('sid-input').value = SID;
+                document.getElementById('disp-username').textContent = name;
+                if (history.replaceState) history.replaceState({}, "", "/buildvi?sid=" + SID);
+                var loginArea = document.getElementById('login-btn-area');
+                loginArea.innerHTML = '';
+                var iconEl = document.createElement('img');
+                iconEl.src = iconUrl(data.icon);
+                iconEl.className = 'current-user-icon';
+                iconEl.title = name + ' (クリックでアイコン変更)';
+                iconEl.onclick = function() { openIconModal(); };
+                iconEl.onerror = function() { this.src = '/static/icons/default.png'; };
+                loginArea.appendChild(iconEl);
+                closeModal();
+                load();
+            } else {
+                errEl.textContent = "エラー: " + (data.error || "失敗しました");
+            }
+        } catch(e) {
+            errEl.textContent = "通信エラーが発生しました";
+        }
+    };
+    xhr.send(fd);
+}
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/buildvi', true);
+    xhr.onload = function() {
+        try {
+            var data = JSON.parse(xhr.responseText);
+            if (data.status === "ok") {
+                // ... 成功時の処理（現在のdoLoginの後半部分）
+            } else {
+                errEl.textContent = "エラー: " + (data.error || "失敗しました");
+            }
+        } catch(e) {
+            errEl.textContent = "通信エラーが発生しました";
+        }
+    };
+    xhr.send(fd);
+}
   function formatJST(timeStr) {
     if (!timeStr) return ''; const [monthDay, time] = timeStr.split(' '); if (!monthDay || !time) return timeStr;
     const [month, day] = monthDay.split('/').map(Number); const [hour, min] = time.split(':').map(Number);
