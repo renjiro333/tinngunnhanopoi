@@ -364,7 +364,9 @@ def save_uploaded_icon(file_storage, filename):
 
 def get_icon_url(filename):
     """Supabase Storage の公開URLを取得"""
-    if supabase is None or not filename:
+    # "default.png" はローカルの static/icons に置かれた固定アイコンであり、
+    # Supabaseバケットにはアップロードされていないため、ここで必ずローカルパスを返す。
+    if supabase is None or not filename or filename == "default.png":
         return "/static/icons/default.png"
     try:
         bucket_name = "icons"
@@ -896,7 +898,7 @@ def classroom_page():
             if name in data:
                 data[name]["icon"] = fname
                 save_data(data)
-            return flask.jsonify({"status": "ok", "icon": fname})
+            return flask.jsonify({"status": "ok", "icon": get_icon_url(fname)})
 
         # 投稿削除
         elif action_type == "delete":
@@ -979,7 +981,7 @@ def classroom_page():
 
             new_sid = secrets.token_hex(24)
             USER_SESSIONS[new_sid] = {"student_name": name, "icon_filename": fname}
-            return flask.jsonify({"status": "ok", "sid": new_sid, "icon": fname})
+            return flask.jsonify({"status": "ok", "sid": new_sid, "icon": get_icon_url(fname)})
 
         # 投稿処理
         elif action_type == "post":
@@ -1065,10 +1067,13 @@ def classroom_page():
             item["liked"] = bool(req_username and req_username in liked_by)
             item["is_approved"] = (item.get("report_status") == "approved")
             item["is_reported"] = (item.get("report_status") == "pending")
+            # 投稿には保存時点のアイコンのファイル名しか入っていないため、
+            # クライアントに返す直前にここで実際のURL(Supabase/ローカル)へ変換する
+            item["icon"] = get_icon_url(item.get("icon"))
             formatted_list.append(item)
 
         for name, info in user_dict.items():
-            formatted_list.append({"type": "user", "user": name, "icon": info.get("icon", "default.png")})
+            formatted_list.append({"type": "user", "user": name, "icon": get_icon_url(info.get("icon", "default.png"))})
 
         valid_hot_posts = [p for p in all_posts if int(p.get("likes", 0)) > 0]
         hot_posts = sorted(valid_hot_posts, key=lambda x: int(x.get("likes", 0)), reverse=True)[:5]
@@ -1083,7 +1088,7 @@ def classroom_page():
         "main.html",
         sid=sid,
         username=user_session["student_name"] if user_session else "Guest",
-        user_icon_filename=user_session["icon_filename"] if user_session else "default.png",
+        user_icon_filename=get_icon_url(user_session["icon_filename"] if user_session else "default.png"),
         registered_users=reg_list,
         access_count=access_count,
     )
