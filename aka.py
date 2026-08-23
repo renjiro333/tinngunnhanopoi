@@ -222,7 +222,6 @@ def loaddata():
         return {}
 
 def save_data(data):
-    """users テーブルに upsert"""
     if supabase is None:
         return
     try:
@@ -235,6 +234,7 @@ def save_data(data):
                 "violation_count": info.get("violation_count", 0),
                 "restricted": info.get("restricted", False),
                 "pending_deletion": info.get("pending_deletion", False),
+                "birthdate": info.get("birthdate"),  # ← 追加
             })
         if rows:
             supabase.table("users").upsert(rows).execute()
@@ -1000,18 +1000,13 @@ def classroom_page():
             data = loaddata()
             if name not in data:
                 return flask.jsonify({"status": "error", "error": "ユーザーが見つかりません"}), 404
-            # ユーザー削除
             del data[name]
             save_data(data)
-            # 投稿も削除
             ps = loadposts()
             ps = [p for p in ps if p.get("user") != name]
             saveposts(ps)
-            # セッション削除
             USER_SESSIONS.pop(sid, None)
             return flask.jsonify({"status": "ok"})
-
-        # 投稿処理
         elif action_type == "post":
             try:
                 sid = flask.request.form.get("sid")
