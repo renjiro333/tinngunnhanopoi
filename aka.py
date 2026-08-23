@@ -181,11 +181,11 @@ import requests
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
 
-if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-    print("⚠️ SUPABASE_URL または SUPABASE_SERVICE_KEY が未設定です。")
-    supabase = None
-else:
-    supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+print("=== 環境変数デバッグ ===")
+print(f"SUPABASE_URL: {'設定あり' if SUPABASE_URL else '未設定'}")
+print(f"SUPABASE_SERVICE_KEY: {'設定あり' if SUPABASE_SERVICE_KEY else '未設定'}")
+if SUPABASE_SERVICE_KEY:
+    print(f"  → 先頭5文字: {SUPABASE_SERVICE_KEY[:5]}...")
 
 # ─────────────────────────────────────────
 # ユーティリティ（再定義しておく）
