@@ -940,15 +940,16 @@ function doLogin() {
 
   function appendGalleryItem(container, f, byLabel) {
     var url = f.url || ('/static/uploads/' + f.save_name); var ext = (f.ext || "").replace(".", "").toUpperCase();
+    var displayName = f.original_name || f.save_name;
     var wrap = document.createElement('div'); wrap.style.cssText = "margin-bottom:12px; border:1px solid #eee; padding:8px; border-radius:8px; background:#fff; overflow:hidden;";
     if (f.type === "image") { var img = document.createElement('img'); img.src = url; img.style.cssText = "width:100%; border-radius:5px; display:block;"; fixPortrait(img); wrap.appendChild(img); }
     else if (f.type === "video") { var vid = document.createElement('video'); vid.controls = true; vid.preload = "metadata"; vid.style.cssText = "width:100%; border-radius:5px; display:block; background:#000;"; vid.src = url; fixPortrait(vid); wrap.appendChild(vid); }
-    else if (f.type === "audio") { var lbl = document.createElement('div'); lbl.style.cssText = "font-size:0.8em; color:#555; margin-bottom:6px;"; lbl.textContent = "🎵 ." + ext; wrap.appendChild(lbl); var aud = document.createElement('audio'); aud.controls = true; aud.preload = "metadata"; aud.style.cssText = "width:100%; display:block;"; aud.src = url; wrap.appendChild(aud); }
+    else if (f.type === "audio") { var lbl = document.createElement('div'); lbl.style.cssText = "font-size:0.8em; color:#555; margin-bottom:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"; lbl.title = displayName; lbl.textContent = "🎵 " + displayName; wrap.appendChild(lbl); var aud = document.createElement('audio'); aud.controls = true; aud.preload = "metadata"; aud.style.cssText = "width:100%; display:block;"; aud.src = url; wrap.appendChild(aud); }
     else {
       var fileIcon = document.createElement('div'); fileIcon.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-top:4px;";
       var fileRow = document.createElement('div'); fileRow.style.cssText = "display:inline-flex; align-items:center; gap:8px; padding:8px 12px; background:#f5f5f5; border:1px solid #ddd; border-radius:8px; font-size:0.85em; color:#444;"; fileRow.innerHTML = fileIconSVG();
-      var fileNameSpan = document.createElement('span'); fileNameSpan.textContent = f.save_name; fileRow.appendChild(fileNameSpan);
-      var dlBtn = document.createElement('a'); dlBtn.href = url; dlBtn.download = f.save_name; dlBtn.textContent = '⬇ ダウンロード'; dlBtn.style.cssText = "display:inline-block; padding:5px 12px; background:#00bcd4; color:#fff; border-radius:6px; font-size:0.8em; font-weight:bold; text-decoration:none;";
+      var fileNameSpan = document.createElement('span'); fileNameSpan.textContent = displayName; fileRow.appendChild(fileNameSpan);
+      var dlBtn = document.createElement('a'); dlBtn.href = url; dlBtn.download = displayName; dlBtn.textContent = '⬇ ダウンロード'; dlBtn.style.cssText = "display:inline-block; padding:5px 12px; background:#00bcd4; color:#fff; border-radius:6px; font-size:0.8em; font-weight:bold; text-decoration:none;";
       fileIcon.appendChild(fileRow); fileIcon.appendChild(dlBtn); wrap.appendChild(fileIcon);
     }
     var extLabel = document.createElement('div'); extLabel.style.cssText = "font-size:9px; color:#aaa; margin-top:3px;"; extLabel.textContent = '.' + ext; wrap.appendChild(extLabel);
@@ -975,7 +976,7 @@ function doLogin() {
     if (postFiles.length && !isRep) {
       postFiles.forEach(function(pf) {
         var furl = pf.url || ('/static/uploads/' + pf.save_name);
-        appendGalleryItem(gDiv, { save_name: pf.save_name, type: pf.type, ext: pf.ext, url: furl }, 'by ' + p.user);
+        appendGalleryItem(gDiv, { save_name: pf.save_name, original_name: pf.original_name, type: pf.type, ext: pf.ext, url: furl }, 'by ' + p.user);
       });
     }
 
