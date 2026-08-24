@@ -111,13 +111,6 @@ def encode_username_filename(username):
 def decode_filename_to_username(filename):
     return urllib.parse.unquote(os.path.splitext(filename)[0])
 
-def list_icons():
-    icons = []
-    for fname in os.listdir(ICON_DIR):
-        if fname.lower().endswith(".png"):
-            icons.append({"name": decode_filename_to_username(fname), "src": f"/static/icons/{fname}"})
-    return icons
-
 def get_drive_direct_url(url):
     import re
     match = re.search(r'/d/([a-zA-Z0-9_-]+)', url)
@@ -126,20 +119,6 @@ def get_drive_direct_url(url):
         # view ではなく download に変更する（こちらの方が安定します）
         return f"https://drive.google.com/uc?export=download&id={file_id}"
     return url
-
-def save_uploaded_icon(file_storage, dest_path):
-    """アップロードされたアイコンが本物の画像であることを確認してから保存する。
-    拡張子は常に .png に固定して保存するが、中身がPNG/JPEG等の画像ファイルで
-    なければ拒否する（HTML/SVG/スクリプトファイルを png と偽って保存させない）。"""
-    try:
-        img = Image.open(file_storage.stream)
-        img.verify()
-        file_storage.stream.seek(0)
-        img = Image.open(file_storage.stream).convert("RGBA")
-        img.save(dest_path, format="PNG")
-        return True
-    except Exception:
-        return False
 
 def save_placeholder_icon(path):
     img = Image.new("RGBA", (400, 400), (255, 255, 255, 0))
@@ -192,7 +171,80 @@ if SUPABASE_URL and SUPABASE_SERVICE_KEY:
 else:
     supabase = None  # ← これを追加！
     print("⚠️ SUPABASE_URL または SUPABASE_SERVICE_KEY が未設定です。")
-    
+
+# ─────────────────────────────────────────
+# ★ Supabase Storage 汎用ヘルパー
+# ─────────────────────────────────────────
+# これを使えば「音声・動画・画像・HTML・その他ファイル」を
+# すべて Supabase Storage のバケットに置くだけでアプリから配信できる。
+# 事前に Supabase ダッシュボード → Storage で以下のバケットを作成しておくこと（Public 推奨）:
+#   - "icons"   : ユーザーアイコン画像（既存）
+#   - "uploads" : /buildvi 投稿に添付された画像/動画/音声
+#   - "media"   : /full 一覧に出す音声/動画/画像/HTML/テキストファイル（管理者が置くもの）
+UPLOADS_BUCKET = "uploads"
+MEDIA_BUCKET = "media"
+
+def supa_upload_bytes(bucket_name, filename, data: bytes, content_type="application/octet-stream"):
+    """バケットへバイナリをアップロード（同名があれば上書き）。成功したら True。"""
+    if supabase is None:
+        return False
+    try:
+        supabase.storage.from_(bucket_name).upload(
+            filename, data,
+            {"content-type": content_type, "upsert": "true"}
+        )
+        return True
+    except Exception as e:
+        print(f"supa_upload_bytesエラー({bucket_name}/{filename}):", e)
+        return False
+
+def supa_public_url(bucket_name, filename):
+    """バケット内ファイルの公開URLを取得。取得できなければ None。"""
+    if supabase is None or not filename:
+        return None
+    try:
+        return supabase.storage.from_(bucket_name).get_public_url(filename)
+    except Exception as e:
+        print(f"supa_public_urlエラー({bucket_name}/{filename}):", e)
+        return None
+
+def supa_list(bucket_name):
+    """バケット内のファイル一覧を [{"name":..., "url":...}, ...] で返す。"""
+    if supabase is None:
+        return []
+    try:
+        res = supabase.storage.from_(bucket_name).list()
+        items = []
+        for f in res:
+            name = f.get("name")
+            # Supabase Storageの内部プレースホルダは無視する
+            if not name or name == ".emptyFolderPlaceholder":
+                continue
+            items.append({"name": name, "url": supa_public_url(bucket_name, name)})
+        return items
+    except Exception as e:
+        print(f"supa_listエラー({bucket_name}):", e)
+        return []
+
+def supa_download(bucket_name, filename):
+    """バケットからファイルの中身（bytes）を取得。失敗時は None。"""
+    if supabase is None or not filename:
+        return None
+    try:
+        return supabase.storage.from_(bucket_name).download(filename)
+    except Exception as e:
+        print(f"supa_downloadエラー({bucket_name}/{filename}):", e)
+        return None
+
+CONTENT_TYPE_BY_EXT = {
+    ".mp4": "video/mp4", ".webm": "video/webm",
+    ".mp3": "audio/mpeg", ".wav": "audio/wav",
+    ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp",
+    ".html": "text/html", ".htm": "text/html",
+    ".txt": "text/plain", ".md": "text/markdown",
+}
+
 # ─────────────────────────────────────────
 # ユーティリティ（再定義しておく）
 # ─────────────────────────────────────────
@@ -474,7 +526,7 @@ def watch():
         media_src = filename
     else:
         player_kind = "video"
-        media_src = f"/static/uploads/{filename[len('__upload__'):]}" if filename.startswith("__upload__") else f"/media/{filename}"
+        media_src = resolve_media_src(filename)
 
     # HTMLテンプレートは固定の文字列（ユーザー入力を一切含まない）とし、
     # 変数は render_template_string の第二引数以降として渡すことで
@@ -507,18 +559,43 @@ def full():
     global access_count
     access_count += 1
 
-    files = os.listdir(MEDIA_DIR) if os.path.exists(MEDIA_DIR) else []
-    audio_files  = [f for f in files if f.endswith((".mp3", ".wav"))]
-    image_files  = [f for f in files if f.endswith((".jpg", ".jpeg", ".png", ".gif"))]
+    # ★「media」バケット：管理者がSupabase Storageに置いた
+    #   音声・動画・画像・HTML・テキストファイルを一覧化する
+    #   （以前はサーバーのローカルディスクを見ていたため、再起動で消えていた）
+    media_items = supa_list(MEDIA_BUCKET)
 
+    audio_files, image_files, html_files, text_files = [], [], [], []
     local_videos = []
+
+    if media_items:
+        for it in media_items:
+            fname = it["name"]
+            ext = os.path.splitext(fname)[1].lower()
+            if ext in (".mp3", ".wav"):
+                audio_files.append(fname)
+            elif ext in (".jpg", ".jpeg", ".png", ".gif"):
+                image_files.append(fname)
+            elif ext in (".mp4", ".webm"):
+                local_videos.append({"value": fname, "text": fname})
+            elif ext in (".html", ".htm"):
+                html_files.append(fname)
+            elif ext in (".txt", ".md"):
+                text_files.append(fname)
+    else:
+        # Supabase未設定・バケットが空の場合はローカルへフォールバック（開発用）
+        files = os.listdir(MEDIA_DIR) if os.path.exists(MEDIA_DIR) else []
+        audio_files  = [f for f in files if f.endswith((".mp3", ".wav"))]
+        image_files  = [f for f in files if f.endswith((".jpg", ".jpeg", ".png", ".gif"))]
+        for f in files:
+            if f.endswith((".mp4", ".webm")):
+                local_videos.append({"value": f, "text": f})
+        target_media_dir = os.path.join(BASE_DIR, "media")
+        if os.path.exists(target_media_dir):
+            html_files = [f for f in os.listdir(target_media_dir) if f.endswith((".html", ".htm"))]
+            text_files = [f for f in os.listdir(target_media_dir) if f.endswith((".txt", ".md"))]
+
     external_videos = []  # ★videos.txt用を独立させる
     classroom_videos = []
-
-    # 1. ローカルの動画ファイル
-    for f in files:
-        if f.endswith((".mp4", ".webm")):
-            local_videos.append({"value": f, "text": f})
 
     # ★ローカル動画だけを名前順にソートする
     local_videos.sort(key=lambda x: str(x["text"]).lower())
@@ -570,24 +647,24 @@ def full():
 
     # ★「3. ソート」を削除（external_videosはソートしないため、テキストの並び順のまま保持されます）
 
-    target_media_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "media")
-    if os.path.exists(target_media_dir):
-        html_files = [f for f in os.listdir(target_media_dir) if f.endswith((".html", ".htm"))]
-        text_files = [f for f in os.listdir(target_media_dir) if f.endswith((".txt", ".md"))]
-    else:
-        html_files = []
-        text_files = []
+    # ★「uploads」バケット：/buildvi の投稿に添付された画像/動画/音声
+    #   （これも以前はローカルの UPLOAD_DIR しか見ておらず、再起動で消えて
+    #     「buildviの画像・音声・動画が読み込まれない」原因になっていた）
+    upload_items = supa_list(UPLOADS_BUCKET)
+    if not upload_items and os.path.exists(UPLOAD_DIR):
+        # Supabase未設定時のローカルフォールバック（開発用）
+        upload_items = [{"name": f, "url": None} for f in os.listdir(UPLOAD_DIR)]
 
-    if os.path.exists(UPLOAD_DIR):
-        for f in os.listdir(UPLOAD_DIR):
-            ext = os.path.splitext(f)[1].lower()
-            tagged = "__upload__" + f
-            if ext in (".mp3", ".wav"):
-                audio_files.append(tagged)
-            elif ext in (".mp4", ".webm"):
-                classroom_videos.append({"value": tagged, "text": "[buildvi] " + f})
-            elif ext in (".jpg", ".jpeg", ".png", ".gif"):
-                image_files.append(tagged)
+    for it in upload_items:
+        f = it["name"]
+        ext = os.path.splitext(f)[1].lower()
+        tagged = "__upload__" + f
+        if ext in (".mp3", ".wav"):
+            audio_files.append(tagged)
+        elif ext in (".mp4", ".webm"):
+            classroom_videos.append({"value": tagged, "text": "[buildvi] " + f})
+        elif ext in (".jpg", ".jpeg", ".png", ".gif"):
+            image_files.append(tagged)
 
     # ★ここで合流（ローカル名前順 + 外部テキスト順 + クラスルーム順）
     video_files = external_videos + local_videos + classroom_videos
@@ -699,13 +776,23 @@ def full():
 # 各種ファイル配信・表示
 # ─────────────────────────────────────────
 
+def resolve_media_src(filename):
+    """/play・/view・/watch共通: filenameが指すファイルの再生用URLを解決する。
+    "__upload__"付きなら buildvi投稿(Supabase "uploads"バケット)、
+    それ以外なら /full 一覧用(Supabase "media"バケット)を見る。
+    Supabase未設定・未アップロード時はローカル配信ルートへフォールバックする。"""
+    if filename.startswith("__upload__"):
+        real_name = filename[len('__upload__'):]
+        return supa_public_url(UPLOADS_BUCKET, real_name) or f"/static/uploads/{real_name}"
+    return supa_public_url(MEDIA_BUCKET, filename) or f"/media/{filename}"
+
 @app.route("/play")
 def play():
     global access_count
     access_count += 1
     filename = request.args.get("filename")
     if not filename: return "filename が指定されていません", 400
-    src = f"/static/uploads/{filename[len('__upload__'):]}" if filename.startswith("__upload__") else f"/media/{filename}"
+    src = resolve_media_src(filename)
     return render_template_string(
         '<audio controls autoplay><source src="{{ src }}" type="audio/mpeg"></audio>'
         '<p><a href="/full">← 戻る</a></p><p>アクセス数: {{ access_count }}</p>',
@@ -715,7 +802,14 @@ def play():
 @app.route("/view_html")
 def view_html():
     filename = request.args.get("filename", "")
-    target_media_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "media")
+    if not filename:
+        return abort(404)
+    # ★まず Supabase Storage の "media" バケットから取得する
+    data = supa_download(MEDIA_BUCKET, filename)
+    if data is not None:
+        return app.response_class(data, mimetype="text/html")
+    # Supabase未設定・未アップロード時はローカルの media/ フォルダへフォールバック（開発用）
+    target_media_dir = os.path.join(BASE_DIR, "media")
     target_path = os.path.join(target_media_dir, filename)
     if os.path.exists(target_path) and os.path.isfile(target_path):
         return send_from_directory(target_media_dir, filename)
@@ -727,7 +821,7 @@ def view_image():
     access_count += 1
     filename = request.args.get("filename")
     if not filename: return "filename が指定されていません", 400
-    src = f"/static/uploads/{filename[len('__upload__'):]}" if filename.startswith("__upload__") else f"/media/{filename}"
+    src = resolve_media_src(filename)
     return render_template_string(
         '<img src="{{ src }}" alt="{{ filename }}" style="max-width:480px; height:auto;">'
         '<p><a href="/full">← 戻る</a></p><p>アクセス数: {{ access_count }}</p>',
@@ -741,6 +835,9 @@ SAFE_MEDIA_EXTENSIONS = {
 @app.route("/media/<filename>")
 def media(filename):
     global access_count
+    # ★このルートは Supabase "media" バケットが未設定/未アップロードの場合の
+    #   ローカルフォールバック専用（通常は resolve_media_src() が
+    #   Supabaseの公開URLを直接返すので、ここは経由しない）。
     # MEDIA_DIR は以前 BASE_DIR（アプリのルート）そのものだったため、
     # aka.py / data.json / posts.json / novls.json / chat.py などの
     # ソースコードや個人情報まで誰でもダウンロードできてしまっていた。
@@ -1085,7 +1182,6 @@ def classroom_page():
                     safe_base = re.sub(r'[\\/:*?"<>|\x00-\x1f]', '_', raw_base).strip() or "file"
                     suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
                     sv_name = f"{safe_base}_{suffix}{ext}"
-                    post_file.save(os.path.join(UPLOAD_DIR, sv_name))
 
                     if ext in (".mp4", ".webm"):
                         ftype = "video"
@@ -1096,7 +1192,28 @@ def classroom_page():
                     else:
                         ftype = "other"
 
-                    new_post["file"] = {"save_name": sv_name, "type": ftype, "ext": ext, "original_name": post_file.filename}
+                    content_type = CONTENT_TYPE_BY_EXT.get(ext, "application/octet-stream")
+                    file_bytes = post_file.read()
+
+                    # ★ まず Supabase Storage の "uploads" バケットへ保存する
+                    #   （サーバーのローカルディスクは再起動で消えるため、これが永続化先になる）
+                    ok = supa_upload_bytes(UPLOADS_BUCKET, sv_name, file_bytes, content_type)
+                    file_url = supa_public_url(UPLOADS_BUCKET, sv_name) if ok else None
+
+                    if not file_url:
+                        # Supabase未設定・アップロード失敗時はローカルにフォールバック（開発用）
+                        try:
+                            post_file.stream.seek(0)
+                        except Exception:
+                            pass
+                        with open(os.path.join(UPLOAD_DIR, sv_name), "wb") as f:
+                            f.write(file_bytes)
+                        file_url = f"/static/uploads/{sv_name}"
+
+                    new_post["file"] = {
+                        "save_name": sv_name, "type": ftype, "ext": ext,
+                        "original_name": post_file.filename, "url": file_url,
+                    }
 
                 ps.append(new_post)
                 saveposts(ps)
@@ -1613,7 +1730,18 @@ def admin_panel():
 def api_files():
     import flask
     items = []
-    if os.path.exists(UPLOAD_DIR):
+    supa_items = supa_list(UPLOADS_BUCKET)
+    if supa_items:
+        for it in supa_items:
+            fname = it["name"]
+            ext = os.path.splitext(fname)[1].lower()
+            if ext in (".mp4", ".webm"): ftype = "video"
+            elif ext in (".mp3", ".wav"): ftype = "audio"
+            elif ext in (".jpg", ".jpeg", ".png", ".gif", ".webp"): ftype = "image"
+            else: ftype = "other"
+            items.append({"save_name": fname, "type": ftype, "ext": ext, "url": it["url"]})
+    elif os.path.exists(UPLOAD_DIR):
+        # Supabase未設定時のローカルフォールバック
         for fname in os.listdir(UPLOAD_DIR):
             ext = os.path.splitext(fname)[1].lower()
             if ext in (".mp4", ".webm"): ftype = "video"
