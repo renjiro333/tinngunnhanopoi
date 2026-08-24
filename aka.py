@@ -49,6 +49,17 @@ if not ADMIN_PASSWORD:
 os.makedirs(ICON_DIR, exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# ★ /static/icons/default.png がサーバー上に無いと、アイコン未設定のユーザーが
+#   全員 404 になってしまう（Renderなどはディスクが再起動で消えるため、
+#   このファイルは起動のたびに無くなっている可能性がある）。
+#   起動時に必ず作り直しておくことで、常に存在する状態を保証する。
+_default_icon_path = os.path.join(ICON_DIR, "default.png")
+if not os.path.exists(_default_icon_path):
+    try:
+        Image.new("RGBA", (400, 400), (200, 200, 200, 255)).save(_default_icon_path)
+    except Exception as e:
+        print("デフォルトアイコン生成エラー:", e)
+
 app = Flask(__name__, template_folder="mysite/templates")
 # secret_key はハードコードせず、環境変数 SECRET_KEY から読む。
 # 未設定の場合は起動のたびにランダム生成（本番では必ず環境変数を設定して固定すること）
@@ -994,6 +1005,99 @@ def novel_read():
 # ─────────────────────────────────────────
 # /ビルドビ
 # ─────────────────────────────────────────
+def compute_is_adult(birthdate_str):
+    """生年月日の文字列(YYYY-MM-DD)から18歳以上かどうかを判定する共通処理。"""
+    if not birthdate_str:
+        return False
+    try:
+        birth_year = int(birthdate_str.split("-")[0])
+        return (datetime.now().year - birth_year) >= 18
+    except Exception:
+        return False
+
+def is_user_adult(student_name):
+    """ユーザー名から、登録済みの生年月日をもとに成人かどうかを判定する。
+    ★必ずサーバー保存の生年月日を見る（クライアントの自己申告は信用しない）。"""
+    user_data = loaddata().get(student_name, {})
+    return compute_is_adult(user_data.get("birthdate"))
+
+def upload_post_file(post_file):
+    """1ファイルをSupabase "uploads" バケットへ保存し、投稿に埋め込むメタ情報を返す。
+    /buildvi の投稿処理と、個別アップロード用エンドポイントの両方から使う共通処理。"""
+    ext = os.path.splitext(post_file.filename)[1].lower()
+    raw_base = os.path.splitext(post_file.filename)[0]
+    safe_base = re.sub(r'[\\/:*?"<>|\x00-\x1f]', '_', raw_base).strip() or "file"
+    suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
+    # ★表示用のファイル名（日本語などを含んでいてもよい）
+    sv_name = f"{safe_base}_{suffix}{ext}"
+    # ★Supabase Storageのキーは日本語などの非ASCII文字が入ると
+    #   "File name is invalid" で弾かれるため、保存キーはASCIIのみで生成する
+    storage_key = f"{uuid.uuid4().hex}{ext}"
+
+    if ext in (".mp4", ".webm"):
+        ftype = "video"
+    elif ext in (".mp3", ".wav"):
+        ftype = "audio"
+    elif ext in (".jpg", ".jpeg", ".png", ".gif", ".webp"):
+        ftype = "image"
+    else:
+        ftype = "other"
+
+    content_type = CONTENT_TYPE_BY_EXT.get(ext, "application/octet-stream")
+    file_bytes = post_file.read()
+
+    # ★ まず Supabase Storage の "uploads" バケットへ保存する
+    #   （サーバーのローカルディスクは再起動で消えるため、これが永続化先になる）
+    ok = supa_upload_bytes(UPLOADS_BUCKET, storage_key, file_bytes, content_type)
+    file_url = supa_public_url(UPLOADS_BUCKET, storage_key) if ok else None
+
+    if not file_url:
+        # Supabase未設定・アップロード失敗時はローカルにフォールバック（開発用）
+        with open(os.path.join(UPLOAD_DIR, sv_name), "wb") as f:
+            f.write(file_bytes)
+        file_url = f"/static/uploads/{sv_name}"
+        storage_key = sv_name  # ローカル保存時は表示名がそのままキーになる
+
+    return {
+        "save_name": sv_name, "storage_key": storage_key, "type": ftype, "ext": ext,
+        "original_name": post_file.filename, "url": file_url,
+    }
+
+MAX_UPLOAD_FILE_MB = 50
+
+@app.route("/buildvi_upload_file", methods=["POST"])
+def buildvi_upload_file():
+    """★ファイルを1つずつ個別にアップロードするための専用エンドポイント。
+    複数ファイルを1つの巨大なリクエストにまとめて送ると、合計サイズが
+    Renderなどのプロキシ側のリクエストサイズ上限に引っかかって
+    アップロードが止まってしまうことがあるため、フロント側はこのAPIを
+    ファイルごとに個別に呼び出し、アップロード完了後のメタ情報だけを
+    最後に /buildvi (action_type=post) へ渡す構成にしている。"""
+    sid = flask.request.form.get("sid")
+    user = USER_SESSIONS.get(sid)
+    if not user:
+        return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
+
+    post_file = flask.request.files.get("file")
+    if not post_file or not post_file.filename:
+        return flask.jsonify({"status": "error", "error": "ファイルが指定されていません"}), 400
+
+    post_file.stream.seek(0, os.SEEK_END)
+    size_mb = post_file.stream.tell() / 1024 / 1024
+    post_file.stream.seek(0)
+    if size_mb > MAX_UPLOAD_FILE_MB:
+        return flask.jsonify({
+            "status": "error",
+            "error": f"ファイルサイズが上限（{MAX_UPLOAD_FILE_MB}MB）を超えています"
+        }), 400
+
+    try:
+        meta = upload_post_file(post_file)
+        return flask.jsonify({"status": "ok", "file": meta})
+    except Exception as e:
+        print("buildvi_upload_fileエラー:", e)
+        return flask.jsonify({"status": "error", "error": "アップロードに失敗しました"}), 500
+
 @app.route("/buildvi", methods=["GET", "POST"])
 def classroom_page():
     global access_count
@@ -1121,12 +1225,7 @@ def classroom_page():
             data[name]["birthdate"] = birthdate
             save_data(data)
             # 年齢判定（18歳以上か）
-            is_adult = False
-            try:
-                birth_year = int(birthdate.split("-")[0])
-                is_adult = (datetime.now().year - birth_year >= 18)
-            except:
-                pass
+            is_adult = compute_is_adult(birthdate)
             return flask.jsonify({"status": "ok", "is_adult": is_adult})
 
         # アカウント削除（デバッグプリント付き）
@@ -1165,7 +1264,11 @@ def classroom_page():
                     return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
 
                 ps = loadposts()
-                # ★複数ファイル添付に対応（同じ name="post_file" で複数送られてくる）
+                # ★複数ファイル添付に対応。
+                #   通常はフロント側が /buildvi_upload_file で先にアップロード済みの
+                #   メタ情報を "files_meta"(JSON配列文字列) として送ってくる。
+                #   直接ファイルが送られてきた場合（古いクライアント等）も後方互換で処理する。
+                files_meta_raw = flask.request.form.get("files_meta")
                 post_files = flask.request.files.getlist("post_file")
                 post_files = [f for f in post_files if f and f.filename]
                 msg = flask.request.form.get("message", "").strip()
@@ -1174,14 +1277,33 @@ def classroom_page():
                 content_restriction = flask.request.form.get("content_restriction", "none").strip()
                 is_highlight = flask.request.form.get("is_highlight", "false")
 
+                # ★年齢確認: R18投稿は「サーバーに保存された生年月日」から18歳以上と
+                #   確認できたユーザーにしか許可しない（クライアントの自己申告は信用しない）
+                if content_restriction == "r18" and not is_user_adult(user["student_name"]):
+                    return flask.jsonify({
+                        "status": "error",
+                        "error": "R18投稿は年齢確認（18歳以上）が完了しているユーザーのみ利用できます"
+                    }), 403
+
                 MAX_FILES_PER_POST = 6
-                if len(post_files) > MAX_FILES_PER_POST:
+
+                files_meta = []
+                if files_meta_raw:
+                    try:
+                        parsed = json.loads(files_meta_raw)
+                        if isinstance(parsed, list):
+                            files_meta = parsed
+                    except Exception as e:
+                        print("files_metaパースエラー:", e)
+                        return flask.jsonify({"status": "error", "error": "添付ファイル情報が不正です"}), 400
+
+                if len(files_meta) + len(post_files) > MAX_FILES_PER_POST:
                     return flask.jsonify({
                         "status": "error",
                         "error": f"添付できるファイルは{MAX_FILES_PER_POST}個までです"
                     }), 400
 
-                if not msg and not post_files:
+                if not msg and not files_meta and not post_files:
                     return flask.jsonify({"status": "error", "error": "メッセージかファイルを入力してください"}), 400
 
                 new_post = {
@@ -1200,46 +1322,9 @@ def classroom_page():
                     "is_highlight": is_highlight
                 }
 
-                files_meta = []
+                # 後方互換: 直接ファイルが送られてきた場合はここでアップロードする
                 for post_file in post_files:
-                    ext = os.path.splitext(post_file.filename)[1].lower()
-                    raw_base = os.path.splitext(post_file.filename)[0]
-                    safe_base = re.sub(r'[\\/:*?"<>|\x00-\x1f]', '_', raw_base).strip() or "file"
-                    suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
-                    # ★表示用のファイル名（日本語などを含んでいてもよい）
-                    sv_name = f"{safe_base}_{suffix}{ext}"
-                    # ★Supabase Storageのキーは日本語などの非ASCII文字が入ると
-                    #   "File name is invalid" で弾かれるため、保存キーはASCIIのみで生成する
-                    storage_key = f"{uuid.uuid4().hex}{ext}"
-
-                    if ext in (".mp4", ".webm"):
-                        ftype = "video"
-                    elif ext in (".mp3", ".wav"):
-                        ftype = "audio"
-                    elif ext in (".jpg", ".jpeg", ".png", ".gif", ".webp"):
-                        ftype = "image"
-                    else:
-                        ftype = "other"
-
-                    content_type = CONTENT_TYPE_BY_EXT.get(ext, "application/octet-stream")
-                    file_bytes = post_file.read()
-
-                    # ★ まず Supabase Storage の "uploads" バケットへ保存する
-                    #   （サーバーのローカルディスクは再起動で消えるため、これが永続化先になる）
-                    ok = supa_upload_bytes(UPLOADS_BUCKET, storage_key, file_bytes, content_type)
-                    file_url = supa_public_url(UPLOADS_BUCKET, storage_key) if ok else None
-
-                    if not file_url:
-                        # Supabase未設定・アップロード失敗時はローカルにフォールバック（開発用）
-                        with open(os.path.join(UPLOAD_DIR, sv_name), "wb") as f:
-                            f.write(file_bytes)
-                        file_url = f"/static/uploads/{sv_name}"
-                        storage_key = sv_name  # ローカル保存時は表示名がそのままキーになる
-
-                    files_meta.append({
-                        "save_name": sv_name, "storage_key": storage_key, "type": ftype, "ext": ext,
-                        "original_name": post_file.filename, "url": file_url,
-                    })
+                    files_meta.append(upload_post_file(post_file))
 
                 new_post["files"] = files_meta
                 if files_meta:
@@ -1267,8 +1352,24 @@ def classroom_page():
         req_user = USER_SESSIONS.get(req_sid)
         req_username = req_user["student_name"] if req_user else None
 
+        # 成人判定（★サーバー保存の生年月日のみを信用する）
+        is_adult = False
+        birthdate_required = False
+        if req_user:
+            user_data = loaddata().get(req_username, {})
+            birthdate = user_data.get("birthdate")
+            if birthdate:
+                is_adult = compute_is_adult(birthdate)
+            else:
+                birthdate_required = True
+
         formatted_list = []
         for p in all_posts:
+            # ★R18投稿は、年齢確認済み(成人)のユーザーにしかそもそも配信しない。
+            #   これまではブラウザ側のJSでR18投稿を非表示にしているだけだったため、
+            #   開発者ツールやAPI直接アクセスで未成年でも中身が見えてしまっていた。
+            if p.get("content_restriction") == "r18" and not is_adult:
+                continue
             item = p.copy()
             item["likes"] = int(item.get("likes", 0))
             if "type" in item:
@@ -1283,24 +1384,8 @@ def classroom_page():
         for name, info in user_dict.items():
             formatted_list.append({"type": "user", "user": name, "icon": get_icon_url(info.get("icon", "default.png"))})
 
-        valid_hot_posts = [p for p in all_posts if int(p.get("likes", 0)) > 0]
+        valid_hot_posts = [p for p in all_posts if int(p.get("likes", 0)) > 0 and not (p.get("content_restriction") == "r18" and not is_adult)]
         hot_posts = sorted(valid_hot_posts, key=lambda x: int(x.get("likes", 0)), reverse=True)[:5]
-
-        # 成人判定
-        is_adult = False
-        birthdate_required = False
-        if req_user:
-            name = req_user["student_name"]
-            user_data = loaddata().get(name, {})
-            birthdate = user_data.get("birthdate")
-            if birthdate:
-                try:
-                    birth_year = int(birthdate.split("-")[0])
-                    is_adult = (datetime.now().year - birth_year >= 18)
-                except:
-                    pass
-            else:
-                birthdate_required = True
 
         return flask.jsonify({
             "all": formatted_list,
