@@ -267,7 +267,7 @@
         <!-- 投稿オプション1: ポルノ・コンテンツ規制設定 -->
         <select name="content_restriction" id="content-restriction" class="opt-select">
           <option value="none">🌐 通常投稿</option>
-          <option value="r18">🔞 R18 (ポルノ/18禁規制)</option>
+          <option value="r18" id="r18-post-option">🔞 R18 (ポルノ/18禁規制)</option>
           <option value="sensitive">⚠️ 閲覧注意 (ショッキング)</option>
           <option value="spoiler">🙈 ネタバレ注意</option>
         </select>
@@ -780,45 +780,120 @@ function doLogin() {
     return `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
   }
 
+  // ★1ファイルを /buildvi_upload_file へアップロードし、進捗を onProgress(pct) で通知するPromise
+  function uploadSingleFile(file, onProgress) {
+    return new Promise(function(resolve, reject) {
+      var fd = new FormData();
+      fd.append('sid', SID);
+      fd.append('file', file);
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', '/buildvi_upload_file', true);
+      xhr.upload.onprogress = function(ev) {
+        if (!ev.lengthComputable) return;
+        onProgress(ev.loaded / ev.total);
+      };
+      xhr.onload = function() {
+        var res;
+        try { res = JSON.parse(xhr.responseText); } catch (e) { res = null; }
+        if (xhr.status === 200 && res && res.status === 'ok') {
+          resolve(res.file);
+        } else {
+          reject((res && res.error) || ('エラー: ' + xhr.status));
+        }
+      };
+      xhr.onerror = function() { reject('通信エラー'); };
+      xhr.send(fd);
+    });
+  }
+
   function submitPost(e) {
     e.preventDefault(); if (!checkLog() || isPosting) return false;
+
+    var fileInput = document.getElementById('post-file-input');
+    var files = fileInput && fileInput.files ? Array.prototype.slice.call(fileInput.files) : [];
+    var hasFiles = files.length > 0;
+
+    // ★Supabase無料プランは1ファイル50MBまでのため、超えるファイルは
+    //   送信前にはじいて「アップロードが延々止まったまま失敗する」のを防ぐ
+    var MAX_FILE_MB = 50;
+    if (hasFiles) {
+      var tooBig = files.filter(function(f) { return f.size > MAX_FILE_MB * 1024 * 1024; });
+      if (tooBig.length > 0) {
+        var names = tooBig.map(function(f) { return f.name + '（' + (f.size / 1024 / 1024).toFixed(1) + 'MB）'; }).join('、');
+        alert('ファイルサイズが大きすぎます（上限' + MAX_FILE_MB + 'MB）:\n' + names + '\n圧縮するか、ファイルを分けて投稿してください。');
+        return false;
+      }
+    }
+
     isPosting = true; const submitBtn = document.getElementById('submit-btn'); const originalText = submitBtn.textContent;
     submitBtn.disabled = true; submitBtn.textContent = "投稿中...";
 
     var progWrap = document.getElementById('upload-progress-wrap');
     var progBar = document.getElementById('upload-progress-bar');
     var progText = document.getElementById('upload-progress-text');
-    var fileInput = document.getElementById('post-file-input');
-    var hasFiles = fileInput && fileInput.files && fileInput.files.length > 0;
-    if (hasFiles) {
-      progBar.style.width = '0%'; progText.textContent = '0%';
-      progWrap.style.display = 'block';
+    var form = document.getElementById('post-form');
+
+    function finishUp(ok, errMsg) {
+      isPosting = false; submitBtn.disabled = false; submitBtn.textContent = originalText;
+      progWrap.style.display = 'none';
+      if (ok) { form.reset(); document.getElementById('n-post').textContent = ''; cancelR(); load(); }
+      else alert('エラーが発生しました: ' + errMsg);
     }
 
-    var form = document.getElementById('post-form'); var fd = new FormData(form); fd.set('sid', SID);
-    var xhr = new XMLHttpRequest(); xhr.open('POST', '/buildvi', true);
-    if (hasFiles && xhr.upload) {
-      xhr.upload.onprogress = function(ev) {
-        if (!ev.lengthComputable) return;
-        var pct = Math.round((ev.loaded / ev.total) * 100);
-        progBar.style.width = pct + '%';
-        progText.textContent = pct + '%';
-        if (pct >= 100) { progText.textContent = 'サーバー処理中...'; }
+    function submitFinalPost(filesMeta) {
+      var fd = new FormData(form);
+      fd.delete('post_file'); // ★実ファイルは既に個別アップロード済みなので送らない
+      fd.set('sid', SID);
+      fd.set('files_meta', JSON.stringify(filesMeta));
+      var xhr = new XMLHttpRequest(); xhr.open('POST', '/buildvi', true);
+      xhr.onload = function() {
+        if (xhr.status === 200) { finishUp(true); return; }
+        var msg = 'エラー: ' + xhr.status;
+        try { var res = JSON.parse(xhr.responseText); if (res && res.error) msg = res.error; } catch (e) {}
+        finishUp(false, msg);
       };
+      xhr.onerror = function() { finishUp(false, '通信エラー'); };
+      xhr.send(fd);
     }
-    xhr.onload = function() {
-      isPosting = false; submitBtn.disabled = false; submitBtn.textContent = originalText;
-      progWrap.style.display = 'none';
-      if (xhr.status === 200) {
-        form.reset(); document.getElementById('n-post').textContent = ''; cancelR(); load();
-      } else alert("エラーが発生しました: " + xhr.status);
-    };
-    xhr.onerror = function() {
-      isPosting = false; submitBtn.disabled = false; submitBtn.textContent = originalText;
-      progWrap.style.display = 'none';
-      alert('通信エラー');
-    };
-    xhr.send(fd); return false;
+
+    if (!hasFiles) {
+      // ファイル無しなら今まで通り即座に投稿
+      submitFinalPost([]);
+      return false;
+    }
+
+    // ★複数ファイルは1つずつ個別のリクエストでアップロードする
+    //   （まとめて1つの巨大なリクエストにすると、合計サイズがサーバー/プロキシ側の
+    //     上限に引っかかり「進捗が途中で止まったまま失敗する」ことがあるため）
+    progBar.style.width = '0%'; progText.textContent = '0%'; progWrap.style.display = 'block';
+
+    var totalBytes = files.reduce(function(sum, f) { return sum + f.size; }, 0);
+    var loadedBefore = 0; // 直前までに完了したファイルの合計バイト数
+    var filesMeta = [];
+
+    function uploadNext(i) {
+      if (i >= files.length) {
+        progText.textContent = 'サーバー処理中...';
+        submitFinalPost(filesMeta);
+        return;
+      }
+      var f = files[i];
+      progText.textContent = 'アップロード中 (' + (i + 1) + '/' + files.length + ')';
+      uploadSingleFile(f, function(frac) {
+        var doneBytes = loadedBefore + f.size * frac;
+        var pct = Math.round((doneBytes / totalBytes) * 100);
+        progBar.style.width = pct + '%';
+        progText.textContent = pct + '% (' + (i + 1) + '/' + files.length + ')';
+      }).then(function(meta) {
+        filesMeta.push(meta);
+        loadedBefore += f.size;
+        uploadNext(i + 1);
+      }).catch(function(err) {
+        finishUp(false, (typeof err === 'string' ? err : 'アップロード失敗') + '（' + f.name + '）');
+      });
+    }
+    uploadNext(0);
+    return false;
   }
 
   function getYT(t) {
@@ -1047,6 +1122,15 @@ function doLogin() {
       CURRENT_IS_ADULT = !!data.is_adult;
       CURRENT_BIRTHDATE_REQUIRED = !!data.birthdate_required;
       reflectR18SettingUI(); reflectBirthdateUI();
+
+      // ★投稿フォームのR18選択肢も、成人確認が済んでいないユーザーには使わせない
+      //   （実際の許可判定はサーバー側でも必ずチェックしているので、これはUX目的の補助）
+      var r18Opt = document.getElementById('r18-post-option');
+      if (r18Opt) {
+        r18Opt.disabled = !CURRENT_IS_ADULT;
+        var restrictSel = document.getElementById('content-restriction');
+        if (restrictSel && !CURRENT_IS_ADULT && restrictSel.value === 'r18') restrictSel.value = 'none';
+      }
 
       // ★DM・通知はサーバーから来た本人分だけをそのまま保持する
       LATEST_DMS = data.my_dms || {};
