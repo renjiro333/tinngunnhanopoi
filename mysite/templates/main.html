@@ -279,6 +279,17 @@
 
         <button type="submit" id="submit-btn" style="margin-left:auto; width:100px; padding:10px; background:#00bcd4; color:#fff; border:none; border-radius:6px; font-weight:bold;">投稿</button>
       </div>
+
+      <!-- ★アップロード進捗バー（動画などサイズが大きい添付ファイルがある時用） -->
+      <div id="upload-progress-wrap" style="display:none; margin-top:10px;">
+        <div style="display:flex; justify-content:space-between; font-size:0.75em; color:#666; margin-bottom:3px;">
+          <span>アップロード中...</span>
+          <span id="upload-progress-text">0%</span>
+        </div>
+        <div style="width:100%; height:10px; background:#e0e0e0; border-radius:6px; overflow:hidden;">
+          <div id="upload-progress-bar" style="width:0%; height:100%; background:#00bcd4; border-radius:6px; transition:width 0.15s ease;"></div>
+        </div>
+      </div>
     </form>
 
     <div id="post-list" style="margin-top:20px;"></div>
@@ -773,15 +784,40 @@ function doLogin() {
     e.preventDefault(); if (!checkLog() || isPosting) return false;
     isPosting = true; const submitBtn = document.getElementById('submit-btn'); const originalText = submitBtn.textContent;
     submitBtn.disabled = true; submitBtn.textContent = "投稿中...";
+
+    var progWrap = document.getElementById('upload-progress-wrap');
+    var progBar = document.getElementById('upload-progress-bar');
+    var progText = document.getElementById('upload-progress-text');
+    var fileInput = document.getElementById('post-file-input');
+    var hasFiles = fileInput && fileInput.files && fileInput.files.length > 0;
+    if (hasFiles) {
+      progBar.style.width = '0%'; progText.textContent = '0%';
+      progWrap.style.display = 'block';
+    }
+
     var form = document.getElementById('post-form'); var fd = new FormData(form); fd.set('sid', SID);
     var xhr = new XMLHttpRequest(); xhr.open('POST', '/buildvi', true);
+    if (hasFiles && xhr.upload) {
+      xhr.upload.onprogress = function(ev) {
+        if (!ev.lengthComputable) return;
+        var pct = Math.round((ev.loaded / ev.total) * 100);
+        progBar.style.width = pct + '%';
+        progText.textContent = pct + '%';
+        if (pct >= 100) { progText.textContent = 'サーバー処理中...'; }
+      };
+    }
     xhr.onload = function() {
       isPosting = false; submitBtn.disabled = false; submitBtn.textContent = originalText;
+      progWrap.style.display = 'none';
       if (xhr.status === 200) {
         form.reset(); document.getElementById('n-post').textContent = ''; cancelR(); load();
       } else alert("エラーが発生しました: " + xhr.status);
     };
-    xhr.onerror = function() { isPosting = false; submitBtn.disabled = false; submitBtn.textContent = originalText; alert('通信エラー'); };
+    xhr.onerror = function() {
+      isPosting = false; submitBtn.disabled = false; submitBtn.textContent = originalText;
+      progWrap.style.display = 'none';
+      alert('通信エラー');
+    };
     xhr.send(fd); return false;
   }
 
