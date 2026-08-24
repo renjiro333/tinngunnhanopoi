@@ -260,7 +260,7 @@
       
       <div style="display:flex; align-items: center; gap:10px; flex-wrap:wrap; margin-top:10px;">
         <label class="custom-file-btn" style="border-color:#ccc; color:#666;">
-          <input type="file" name="post_file" id="post-file-input" onchange="upName(this, 'n-post')">ファイルを添付
+          <input type="file" name="post_file" id="post-file-input" multiple onchange="upName(this, 'n-post')">ファイルを添付
         </label>
         <span id="n-post" style="font-size:0.7em; color:#888;"></span>
         
@@ -683,7 +683,12 @@ function swM(m) {
     document.getElementById('login-password').autocomplete = isR ? 'new-password' : 'current-password';
 }
 
-  function upName(input, targetId) { document.getElementById(targetId).innerText = input.files.length > 0 ? input.files[0].name : ""; }
+  function upName(input, targetId) {
+    var el = document.getElementById(targetId);
+    if (!input.files || input.files.length === 0) { el.innerText = ""; return; }
+    if (input.files.length === 1) { el.innerText = input.files[0].name; return; }
+    el.innerText = input.files.length + "個のファイル (" + Array.prototype.map.call(input.files, function(f){return f.name;}).join(", ") + ")";
+  }
   function cancelR() { document.getElementById("rep-input").value = ""; document.getElementById("rep-box").style.display = "none"; }
 
 function doLogin() {
@@ -814,6 +819,14 @@ function doLogin() {
 
   function fileIconSVG() { return '<svg width="24" height="30" viewBox="0 0 24 30" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="1" width="18" height="26" rx="2" fill="white" stroke="#aaa" stroke-width="1.5"/><path d="M13 1v7h7" fill="none" stroke="#aaa" stroke-width="1.5"/><path d="M13 1l7 7" fill="none" stroke="#aaa" stroke-width="1.5"/><rect x="4" y="13" width="11" height="1.5" rx="1" fill="#ccc"/><rect x="4" y="17" width="8" height="1.5" rx="1" fill="#ccc"/><rect x="4" y="21" width="10" height="1.5" rx="1" fill="#ccc"/></svg>'; }
 
+  // ★複数ファイル添付対応: 新形式 p.files（配列）を優先し、
+  //   旧形式 p.file（単体）しか持たない古い投稿も引き続き表示できるようにする
+  function getPostFiles(p) {
+    if (p.files && p.files.length) return p.files;
+    if (p.file) return [p.file];
+    return [];
+  }
+
   function appendGalleryItem(container, f, byLabel) {
     var url = f.url || ('/static/uploads/' + f.save_name); var ext = (f.ext || "").replace(".", "").toUpperCase();
     var wrap = document.createElement('div'); wrap.style.cssText = "margin-bottom:12px; border:1px solid #eee; padding:8px; border-radius:8px; background:#fff; overflow:hidden;";
@@ -840,16 +853,19 @@ function doLogin() {
     // 追加機能: 強調ハイライトオプションが適用されている場合
     if (p.is_highlight || p.is_highlight === "true") wrap.classList.add('post-highlight');
 
-    var url = p.file ? (p.file.url || ('/static/uploads/' + p.file.save_name)) : null;
-    
+    var postFiles = getPostFiles(p);
+
     // 規制フラグの判定 (r18 / sensitive / spoiler)
     var restriction = p.content_restriction || (p.is_r18 === true || p.is_r18 === "true" || p.is_r18 === "on" ? "r18" : "none");
 
     // ギャラリーには「実際に投稿に添付されているファイル」を追加する
     // （R18投稿自体が isR18DisplayEnabled() に応じて load() の時点で除外されるため、
     //   ここでは特別な判定をしなくても自動的にR18ファイルだけ出し分けられる）
-    if (p.file && !isRep) {
-      appendGalleryItem(gDiv, { save_name: p.file.save_name, type: p.file.type, ext: p.file.ext, url: url }, 'by ' + p.user);
+    if (postFiles.length && !isRep) {
+      postFiles.forEach(function(pf) {
+        var furl = pf.url || ('/static/uploads/' + pf.save_name);
+        appendGalleryItem(gDiv, { save_name: pf.save_name, type: pf.type, ext: pf.ext, url: furl }, 'by ' + p.user);
+      });
     }
 
     // 規制バッジは後段のヘッダー生成内で直接組み立てる (restriction変数を参照)
@@ -904,27 +920,33 @@ function doLogin() {
       if (ytHtml) { var ytDiv = document.createElement('div'); ytDiv.innerHTML = ytHtml; body.appendChild(ytDiv); }
 
       // ファイル表示処理 (ポルノ/閲覧注意/ネタバレ対応ワンクッション機能)
-      if (p.file) {
+      if (postFiles.length) {
         var mediaWrapper = document.createElement('div');
         mediaWrapper.style.marginTop = "10px";
 
         var buildMedia = function() {
-          var m = document.createElement('div');
-          if (p.file.type === "image") {
-            var img2 = document.createElement('img'); img2.src = url; img2.className = "media-content"; fixPortrait(img2); m.appendChild(img2);
-          } else if (p.file.type === "video") {
-            var vid2 = document.createElement('video'); vid2.controls = true; vid2.preload = "metadata"; vid2.className = "media-content"; vid2.src = url; fixPortrait(vid2); m.appendChild(vid2);
-          } else if (p.file.type === "audio") {
-            var aud2 = document.createElement('audio'); aud2.controls = true; aud2.preload = "metadata"; aud2.className = "media-content"; aud2.src = url; m.appendChild(aud2);
-          } else {
-            var fileIcon2 = document.createElement('div'); fileIcon2.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-top:10px;";
-            var fileRow2 = document.createElement('div'); fileRow2.style.cssText = "display:inline-flex; align-items:center; gap:8px; padding:8px 12px; background:#f5f5f5; border:1px solid #ddd; border-radius:8px; font-size:0.85em; color:#444;";
-            fileRow2.innerHTML = fileIconSVG();
-            var fileNameSpan2 = document.createElement('span'); fileNameSpan2.textContent = p.file.original_name || p.file.save_name; fileRow2.appendChild(fileNameSpan2);
-            var dlBtn2 = document.createElement('a'); dlBtn2.href = url; dlBtn2.download = p.file.original_name || p.file.save_name; dlBtn2.textContent = '⬇ ダウンロード'; dlBtn2.style.cssText = "display:inline-block; padding:5px 12px; background:#00bcd4; color:#fff; border-radius:6px; font-size:0.8em; font-weight:bold; text-decoration:none;";
-            fileIcon2.appendChild(fileRow2); fileIcon2.appendChild(dlBtn2); m.appendChild(fileIcon2);
-          }
-          return m;
+          var container = document.createElement('div');
+          container.style.cssText = "display:flex; flex-direction:column; gap:8px;";
+          postFiles.forEach(function(pf) {
+            var furl = pf.url || ('/static/uploads/' + pf.save_name);
+            var m = document.createElement('div');
+            if (pf.type === "image") {
+              var img2 = document.createElement('img'); img2.src = furl; img2.className = "media-content"; fixPortrait(img2); m.appendChild(img2);
+            } else if (pf.type === "video") {
+              var vid2 = document.createElement('video'); vid2.controls = true; vid2.preload = "metadata"; vid2.className = "media-content"; vid2.src = furl; fixPortrait(vid2); m.appendChild(vid2);
+            } else if (pf.type === "audio") {
+              var aud2 = document.createElement('audio'); aud2.controls = true; aud2.preload = "metadata"; aud2.className = "media-content"; aud2.src = furl; m.appendChild(aud2);
+            } else {
+              var fileIcon2 = document.createElement('div'); fileIcon2.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-top:10px;";
+              var fileRow2 = document.createElement('div'); fileRow2.style.cssText = "display:inline-flex; align-items:center; gap:8px; padding:8px 12px; background:#f5f5f5; border:1px solid #ddd; border-radius:8px; font-size:0.85em; color:#444;";
+              fileRow2.innerHTML = fileIconSVG();
+              var fileNameSpan2 = document.createElement('span'); fileNameSpan2.textContent = pf.original_name || pf.save_name; fileRow2.appendChild(fileNameSpan2);
+              var dlBtn2 = document.createElement('a'); dlBtn2.href = furl; dlBtn2.download = pf.original_name || pf.save_name; dlBtn2.textContent = '⬇ ダウンロード'; dlBtn2.style.cssText = "display:inline-block; padding:5px 12px; background:#00bcd4; color:#fff; border-radius:6px; font-size:0.8em; font-weight:bold; text-decoration:none;";
+              fileIcon2.appendChild(fileRow2); fileIcon2.appendChild(dlBtn2); m.appendChild(fileIcon2);
+            }
+            container.appendChild(m);
+          });
+          return container;
         };
 
         // オプションに応じた遮蔽ワンクッションカバーの生成
