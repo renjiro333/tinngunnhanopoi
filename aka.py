@@ -548,6 +548,8 @@ def watch():
     else:
         player_kind = "video"
         media_src = resolve_media_src(filename)
+        if media_src is None:
+            return abort(404)
 
     # HTMLテンプレートは固定の文字列（ユーザー入力を一切含まない）とし、
     # 変数は render_template_string の第二引数以降として渡すことで
@@ -677,12 +679,18 @@ def full():
         upload_items = [{"name": f, "url": None} for f in os.listdir(UPLOAD_DIR)]
 
     # ★保存キーはUUIDベースで人間には読めないため、投稿データから元のファイル名を逆引きする
+    #   また、R18指定された添付ファイルは「誰でも見られる公開ページ」である/fullには
+    #   絶対に出してはいけないので、R18投稿の保存キーを集めて除外する
     display_name_by_key = {}
+    r18_storage_keys = set()
     for p in loadposts():
+        is_r18_post = (p.get("content_restriction") == "r18")
         for fmeta in (p.get("files") or ([p["file"]] if p.get("file") else [])):
             key = fmeta.get("storage_key") or fmeta.get("save_name")
             if key:
                 display_name_by_key[key] = fmeta.get("original_name") or fmeta.get("save_name") or key
+                if is_r18_post:
+                    r18_storage_keys.add(key)
 
     # audio_files / image_files はここまで「素の音声・動画・画像」の文字列一覧だったので
     # {"value":保存キー, "text":表示名} の辞書に統一する（動画欄と同じ形にする）
@@ -691,6 +699,8 @@ def full():
 
     for it in upload_items:
         f = it["name"]
+        if f in r18_storage_keys:
+            continue  # ★R18添付ファイルは/fullの一覧には出さない
         ext = os.path.splitext(f)[1].lower()
         tagged = "__upload__" + f
         label = "[buildvi] " + display_name_by_key.get(f, f)
@@ -811,23 +821,41 @@ def full():
 # 各種ファイル配信・表示
 # ─────────────────────────────────────────
 
+def is_r18_upload_key(storage_key):
+    """このstorage_keyが、R18指定された投稿の添付ファイルかどうかを判定する。
+    ★/play・/view・/watch・/fullはログイン不要の公開ルートなので、
+      年齢確認のしようがない。よってR18添付ファイルはここでは一律再生させない。"""
+    for p in loadposts():
+        if p.get("content_restriction") != "r18":
+            continue
+        for fmeta in (p.get("files") or ([p["file"]] if p.get("file") else [])):
+            key = fmeta.get("storage_key") or fmeta.get("save_name")
+            if key == storage_key:
+                return True
+    return False
+
 def resolve_media_src(filename):
     """/play・/view・/watch共通: filenameが指すファイルの再生用URLを解決する。
     "__upload__"付きなら buildvi投稿(Supabase "uploads"バケット)、
     それ以外なら /full 一覧用(Supabase "media"バケット)を見る。
-    Supabase未設定・未アップロード時はローカル配信ルートへフォールバックする。"""
+    Supabase未設定・未アップロード時はローカル配信ルートへフォールバックする。
+    R18指定の添付ファイルは None を返す（呼び出し元で404にする）。"""
     if filename.startswith("__upload__"):
         real_name = filename[len('__upload__'):]
+        if is_r18_upload_key(real_name):
+            return None
         return supa_public_url(UPLOADS_BUCKET, real_name) or f"/static/uploads/{real_name}"
     return supa_public_url(MEDIA_BUCKET, filename) or f"/media/{filename}"
 
 @app.route("/play")
 def play():
     global access_count
-    access_count += 1
     filename = request.args.get("filename")
     if not filename: return "filename が指定されていません", 400
     src = resolve_media_src(filename)
+    if src is None:
+        return abort(404)
+    access_count += 1
     return render_template_string(
         '<audio controls autoplay><source src="{{ src }}" type="audio/mpeg"></audio>'
         '<p><a href="/full">← 戻る</a></p><p>アクセス数: {{ access_count }}</p>',
@@ -853,10 +881,12 @@ def view_html():
 @app.route("/view")
 def view_image():
     global access_count
-    access_count += 1
     filename = request.args.get("filename")
     if not filename: return "filename が指定されていません", 400
     src = resolve_media_src(filename)
+    if src is None:
+        return abort(404)
+    access_count += 1
     return render_template_string(
         '<img src="{{ src }}" alt="{{ filename }}" style="max-width:480px; height:auto;">'
         '<p><a href="/full">← 戻る</a></p><p>アクセス数: {{ access_count }}</p>',
