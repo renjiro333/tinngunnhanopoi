@@ -655,16 +655,30 @@ def full():
         # Supabase未設定時のローカルフォールバック（開発用）
         upload_items = [{"name": f, "url": None} for f in os.listdir(UPLOAD_DIR)]
 
+    # ★保存キーはUUIDベースで人間には読めないため、投稿データから元のファイル名を逆引きする
+    display_name_by_key = {}
+    for p in loadposts():
+        for fmeta in (p.get("files") or ([p["file"]] if p.get("file") else [])):
+            key = fmeta.get("storage_key") or fmeta.get("save_name")
+            if key:
+                display_name_by_key[key] = fmeta.get("original_name") or fmeta.get("save_name") or key
+
+    # audio_files / image_files はここまで「素の音声・動画・画像」の文字列一覧だったので
+    # {"value":保存キー, "text":表示名} の辞書に統一する（動画欄と同じ形にする）
+    audio_files = [{"value": f, "text": f} for f in audio_files]
+    image_files = [{"value": f, "text": f} for f in image_files]
+
     for it in upload_items:
         f = it["name"]
         ext = os.path.splitext(f)[1].lower()
         tagged = "__upload__" + f
+        label = "[buildvi] " + display_name_by_key.get(f, f)
         if ext in (".mp3", ".wav"):
-            audio_files.append(tagged)
+            audio_files.append({"value": tagged, "text": label})
         elif ext in (".mp4", ".webm"):
-            classroom_videos.append({"value": tagged, "text": "[buildvi] " + f})
+            classroom_videos.append({"value": tagged, "text": label})
         elif ext in (".jpg", ".jpeg", ".png", ".gif"):
-            image_files.append(tagged)
+            image_files.append({"value": tagged, "text": label})
 
     # ★ここで合流（ローカル名前順 + 外部テキスト順 + クラスルーム順）
     video_files = external_videos + local_videos + classroom_videos
@@ -674,7 +688,7 @@ def full():
     <form method="get" action="/play">
       <select name="filename">
         {% for f in audio %}
-          <option value="{{ f }}">{{ f.replace("__upload__","[buildvi] ") }}</option>
+          <option value="{{ f.value }}">{{ f.text }}</option>
         {% endfor %}
       </select>
       <input type="submit" value="再生">
@@ -694,7 +708,7 @@ def full():
     <form method="get" action="/view">
       <select name="filename">
         {% for f in images %}
-          <option value="{{ f }}">{{ f.replace("__upload__","[buildvi] ") }}</option>
+          <option value="{{ f.value }}">{{ f.text }}</option>
         {% endfor %}
       </select>
       <input type="submit" value="表示">
@@ -1151,14 +1165,23 @@ def classroom_page():
                     return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
 
                 ps = loadposts()
-                post_file = flask.request.files.get("post_file")
+                # ★複数ファイル添付に対応（同じ name="post_file" で複数送られてくる）
+                post_files = flask.request.files.getlist("post_file")
+                post_files = [f for f in post_files if f and f.filename]
                 msg = flask.request.form.get("message", "").strip()
                 reply_to = flask.request.form.get("reply_to", "").strip() or None
                 thread = flask.request.form.get("thread", "").strip()
                 content_restriction = flask.request.form.get("content_restriction", "none").strip()
                 is_highlight = flask.request.form.get("is_highlight", "false")
 
-                if not msg and not (post_file and post_file.filename):
+                MAX_FILES_PER_POST = 6
+                if len(post_files) > MAX_FILES_PER_POST:
+                    return flask.jsonify({
+                        "status": "error",
+                        "error": f"添付できるファイルは{MAX_FILES_PER_POST}個までです"
+                    }), 400
+
+                if not msg and not post_files:
                     return flask.jsonify({"status": "error", "error": "メッセージかファイルを入力してください"}), 400
 
                 new_post = {
@@ -1168,6 +1191,7 @@ def classroom_page():
                     "icon": user["icon_filename"],
                     "time": datetime.now().strftime("%m/%d %H:%M"),
                     "file": None,
+                    "files": [],
                     "likes": 0,
                     "views": 0,
                     "reply_to": reply_to,
@@ -1176,12 +1200,17 @@ def classroom_page():
                     "is_highlight": is_highlight
                 }
 
-                if post_file and post_file.filename:
+                files_meta = []
+                for post_file in post_files:
                     ext = os.path.splitext(post_file.filename)[1].lower()
                     raw_base = os.path.splitext(post_file.filename)[0]
                     safe_base = re.sub(r'[\\/:*?"<>|\x00-\x1f]', '_', raw_base).strip() or "file"
                     suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
+                    # ★表示用のファイル名（日本語などを含んでいてもよい）
                     sv_name = f"{safe_base}_{suffix}{ext}"
+                    # ★Supabase Storageのキーは日本語などの非ASCII文字が入ると
+                    #   "File name is invalid" で弾かれるため、保存キーはASCIIのみで生成する
+                    storage_key = f"{uuid.uuid4().hex}{ext}"
 
                     if ext in (".mp4", ".webm"):
                         ftype = "video"
@@ -1197,23 +1226,25 @@ def classroom_page():
 
                     # ★ まず Supabase Storage の "uploads" バケットへ保存する
                     #   （サーバーのローカルディスクは再起動で消えるため、これが永続化先になる）
-                    ok = supa_upload_bytes(UPLOADS_BUCKET, sv_name, file_bytes, content_type)
-                    file_url = supa_public_url(UPLOADS_BUCKET, sv_name) if ok else None
+                    ok = supa_upload_bytes(UPLOADS_BUCKET, storage_key, file_bytes, content_type)
+                    file_url = supa_public_url(UPLOADS_BUCKET, storage_key) if ok else None
 
                     if not file_url:
                         # Supabase未設定・アップロード失敗時はローカルにフォールバック（開発用）
-                        try:
-                            post_file.stream.seek(0)
-                        except Exception:
-                            pass
                         with open(os.path.join(UPLOAD_DIR, sv_name), "wb") as f:
                             f.write(file_bytes)
                         file_url = f"/static/uploads/{sv_name}"
+                        storage_key = sv_name  # ローカル保存時は表示名がそのままキーになる
 
-                    new_post["file"] = {
-                        "save_name": sv_name, "type": ftype, "ext": ext,
+                    files_meta.append({
+                        "save_name": sv_name, "storage_key": storage_key, "type": ftype, "ext": ext,
                         "original_name": post_file.filename, "url": file_url,
-                    }
+                    })
+
+                new_post["files"] = files_meta
+                if files_meta:
+                    # ★後方互換: 単体ファイル前提の古いクライアント/コード用に先頭ファイルも入れておく
+                    new_post["file"] = files_meta[0]
 
                 ps.append(new_post)
                 saveposts(ps)
