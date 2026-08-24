@@ -320,10 +320,20 @@ def loadposts():
         return []
 
 def saveposts(posts):
-    """posts テーブルに upsert（idベース）"""
+    """posts テーブルを、渡されたリストの内容に完全に同期させる。
+    ★以前はupsertのみだったため、リストから消えた投稿（＝削除したい投稿）が
+      Supabase側には残り続け、「削除しても消えない」原因になっていた。
+      ここでは先に「今のDBにはあるが、新しいリストには無いid」を探して削除してから、
+      残りをupsertすることで、削除がちゃんとSupabaseにも反映されるようにする。"""
     if supabase is None:
         return
     try:
+        keep_ids = [p["id"] for p in posts if p.get("id")]
+        existing = supabase.table("posts").select("id").execute().data or []
+        existing_ids = [row["id"] for row in existing]
+        to_delete = [i for i in existing_ids if i not in keep_ids]
+        if to_delete:
+            supabase.table("posts").delete().in_("id", to_delete).execute()
         if posts:
             supabase.table("posts").upsert(posts).execute()
     except Exception as e:
