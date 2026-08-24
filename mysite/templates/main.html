@@ -840,7 +840,7 @@ function doLogin() {
     // 追加機能: 強調ハイライトオプションが適用されている場合
     if (p.is_highlight || p.is_highlight === "true") wrap.classList.add('post-highlight');
 
-    var url = p.file ? ('/static/uploads/' + p.file.save_name) : null;
+    var url = p.file ? (p.file.url || ('/static/uploads/' + p.file.save_name)) : null;
     
     // 規制フラグの判定 (r18 / sensitive / spoiler)
     var restriction = p.content_restriction || (p.is_r18 === true || p.is_r18 === "true" || p.is_r18 === "on" ? "r18" : "none");
