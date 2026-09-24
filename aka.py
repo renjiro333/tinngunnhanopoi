@@ -599,6 +599,30 @@ def watch():
     )
 
 # ─────────────────────────────────────────
+# ❤️ ヘルスチェック（Supabaseの自動一時停止を防ぐための外形監視用）
+# ─────────────────────────────────────────
+# UptimeRobotなどの外部監視サービスからこのURLを数分おきに叩いてもらうことで、
+# Supabase(無料プラン)が「しばらくアクセスが無い」と判断してプロジェクトを
+# 自動一時停止するのを防ぐ。/ ではなく専用エンドポイントにしているのは、
+# トップページの実装が将来変わってもSupabaseへの実アクセスが確実に
+# 発生し続けるようにするため。
+@app.route("/healthz")
+def healthz():
+    if supabase is None:
+        # Supabase未設定時は「アプリ自体は動いている」ことだけ返す
+        return jsonify({"status": "ok", "supabase": "not_configured"}), 200
+    try:
+        supabase.table("posts").select("id").limit(1).execute()
+        return jsonify({"status": "ok", "supabase": "reachable"}), 200
+    except Exception as e:
+        # ここは意図的に例外を握りつぶす。監視用エンドポイントなので、
+        # Supabase側の障害（一時停止など）が起きても500で監視サービスに
+        # アラートが飛ぶより、状態を200+エラー内容として返した方が扱いやすい。
+        # ただし他の通常ルート（loadposts等）ではこの握りつぶしは絶対にしないこと。
+        print("healthzエラー:", e)
+        return jsonify({"status": "error", "supabase": "unreachable", "detail": str(e)}), 503
+
+# ─────────────────────────────────────────
 # /full メディア一覧 (外部動画は最新順・ローカルは名前順)
 # ─────────────────────────────────────────
 @app.route("/")
