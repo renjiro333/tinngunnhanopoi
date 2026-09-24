@@ -270,74 +270,99 @@ def dm_pair_key(a, b):
 # ─────────────────────────────────────────
 
 def loaddata():
-    """users テーブル → {username: userdata} 辞書"""
+    """users テーブル → {username: userdata} 辞書
+    ★重要: ここで例外を握りつぶして {} を返すと、呼び出し元は
+      「ユーザーが0人」と誤解したまま処理を続けてしまう可能性がある。
+      読み込みに失敗した場合は例外をそのまま上に伝播させ、
+      その場のリクエスト処理を中断させる（＝データを壊す操作に進ませない）。"""
     if supabase is None:
         return {}
-    try:
-        res = supabase.table("users").select("*").execute()
-        data = {}
-        for row in res.data:
-            name = row.pop("name")
-            data[name] = row
-        return data
-    except Exception as e:
-        print("loaddataエラー:", e)
-        return {}
+    res = supabase.table("users").select("*").execute()
+    data = {}
+    for row in res.data:
+        name = row.pop("name")
+        data[name] = row
+    return data
 
 def save_data(data):
     print(f"save_data 呼び出し: supabase is {supabase}")
     if supabase is None:
         print("save_data: supabase is None, 保存をスキップ")
         return
-    try:
-        rows = []
-        for name, info in data.items():
-            rows.append({
-                "name": name,
-                "icon": info.get("icon"),
-                "pwhash": info.get("pwhash"),
-                "violation_count": info.get("violation_count", 0),
-                "restricted": info.get("restricted", False),
-                "pending_deletion": info.get("pending_deletion", False),
-                "birthdate": info.get("birthdate"),
-            })
-        print(f"save_data: upsert 実行前 rows: {rows}")
-        if rows:
-            supabase.table("users").upsert(rows).execute()
-            print("save_data: upsert 成功")
-    except Exception as e:
-        print(f"save_dataエラー: {e}")
+    rows = []
+    for name, info in data.items():
+        rows.append({
+            "name": name,
+            "icon": info.get("icon"),
+            "pwhash": info.get("pwhash"),
+            "violation_count": info.get("violation_count", 0),
+            "restricted": info.get("restricted", False),
+            "pending_deletion": info.get("pending_deletion", False),
+            "birthdate": info.get("birthdate"),
+        })
+    print(f"save_data: upsert 実行前 rows: {rows}")
+    if rows:
+        # ★以前はここで例外を握りつぶしていたため、保存が実際には失敗していても
+        #   呼び出し元は「成功した」ものとして処理を続けてしまっていた。
+        #   失敗はそのまま伝播させ、呼び出し元（リクエストハンドラ）に
+        #   気づかせるようにする。
+        supabase.table("users").upsert(rows).execute()
+        print("save_data: upsert 成功")
 
 def loadposts():
-    """posts テーブル → リスト"""
+    """posts テーブル → リスト
+    ★重要（バグ修正）: 以前はここで例外を握りつぶして [] を返していた。
+      すると Supabase への一時的な通信エラーやタイムアウトが起きただけで
+      「投稿は0件」という誤った結果を返してしまい、その直後に呼ばれる
+      saveposts() が「今回のリストに無いidは全部削除された投稿」と
+      解釈して、Supabase上の投稿を“ほぼ全部”消してしまっていた。
+      （投稿・いいね・削除・通報など、loadposts()→加工→saveposts() という
+      流れのどこでも起こり得るため、「時間が経つと投稿が全部消える」の
+      直接の原因になっていた）
+      読み込みに失敗した場合は例外をそのまま上に伝播させ、
+      その場のリクエスト処理を中断させる（＝壊れたデータでsaveposts()を
+      呼ばせない）のが正しい対処。"""
     if supabase is None:
         return []
-    try:
-        res = supabase.table("posts").select("*").execute()
-        return res.data
-    except Exception as e:
-        print("loadpostsエラー:", e)
-        return []
+    res = supabase.table("posts").select("*").execute()
+    return res.data or []
 
-def saveposts(posts):
+def saveposts(posts, allow_empty=False):
     """posts テーブルを、渡されたリストの内容に完全に同期させる。
     ★以前はupsertのみだったため、リストから消えた投稿（＝削除したい投稿）が
       Supabase側には残り続け、「削除しても消えない」原因になっていた。
       ここでは先に「今のDBにはあるが、新しいリストには無いid」を探して削除してから、
-      残りをupsertすることで、削除がちゃんとSupabaseにも反映されるようにする。"""
+      残りをupsertすることで、削除がちゃんとSupabaseにも反映されるようにする。
+
+    ★安全策: この関数は「渡されたリストが完全である」ことを前提に差分削除を
+      行う破壊的な処理。呼び出し元は必ず loadposts() で読み込めた完全なリストを
+      加工して渡すこと。読み込み自体が失敗した場合は loadposts() が例外を
+      投げるので、この関数まで処理が到達しないようになっている。
+      ここでも例外を握りつぶさず伝播させることで、「削除/更新に失敗したのに
+      呼び出し元は成功したと思い込む」状態を防ぐ。"""
     if supabase is None:
         return
-    try:
-        keep_ids = [p["id"] for p in posts if p.get("id")]
-        existing = supabase.table("posts").select("id").execute().data or []
-        existing_ids = [row["id"] for row in existing]
-        to_delete = [i for i in existing_ids if i not in keep_ids]
-        if to_delete:
-            supabase.table("posts").delete().in_("id", to_delete).execute()
-        if posts:
-            supabase.table("posts").upsert(posts).execute()
-    except Exception as e:
-        print("savepostsエラー:", e)
+    keep_ids = [p["id"] for p in posts if p.get("id")]
+    existing = supabase.table("posts").select("id").execute().data or []
+    existing_ids = [row["id"] for row in existing]
+    to_delete = [i for i in existing_ids if i not in keep_ids]
+
+    # ★追加の安全弁: 既存の投稿が1件以上あるのに、今回のリストが空で
+    #   「全件削除」になってしまうケースは、正常なフローではまず起こらない
+    #   （通常の削除/通報などは常に他ユーザーの投稿を残す）。
+    #   万一 loadposts() 以外の経路で空リストが渡ってきても、
+    #   テーブルを丸ごと空にする事故を防ぐため、ここで止めて例外を出す。
+    if existing_ids and not posts and not allow_empty:
+        raise RuntimeError(
+            "saveposts: 既存投稿が{}件あるのに空リストが渡されたため、"
+            "全件削除を防止して処理を中断しました。意図的に全件削除したい"
+            "場合は saveposts(posts, allow_empty=True) を使ってください。".format(len(existing_ids))
+        )
+
+    if to_delete:
+        supabase.table("posts").delete().in_("id", to_delete).execute()
+    if posts:
+        supabase.table("posts").upsert(posts).execute()
 
 def load_dms():
     """dm_messages テーブル → {pair_key: [messages]}"""
@@ -1227,7 +1252,9 @@ def classroom_page():
                     save_data(data)
                     ps = loadposts()
                     ps = [p for p in ps if p.get("user") != name]
-                    saveposts(ps)
+                    # このユーザーがそのアカウントで唯一の投稿者だった場合、
+                    # 意図的に投稿リストが空になり得るためガードを明示的に外す
+                    saveposts(ps, allow_empty=True)
                     return flask.jsonify({
                         "status": "error",
                         "error": "通報内容が認定されたため、このアカウントは削除されました。",
@@ -1290,7 +1317,9 @@ def classroom_page():
             print("save_data 実行完了")
             ps = loadposts()
             ps = [p for p in ps if p.get("user") != name]
-            saveposts(ps)
+            # このユーザーがそのアカウントで唯一の投稿者だった場合、
+            # 意図的に投稿リストが空になり得るためガードを明示的に外す
+            saveposts(ps, allow_empty=True)
             USER_SESSIONS.pop(sid, None)
             print("=== delete_account 終了 ===")
             return flask.jsonify({"status": "ok"})
