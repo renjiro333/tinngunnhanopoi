@@ -395,9 +395,9 @@
   function reportPost(postId) {
     var reason = prompt("通報理由を入力してください:");
     if (!reason) return;
-    var fd = new FormData(); fd.append('action_type', 'report_post'); fd.append('sid', SID);
+    var fd = new FormData(); fd.append('sid', SID);
     fd.append('post_id', postId); fd.append('reason', reason);
-    var xhr = new XMLHttpRequest(); xhr.open('POST', '/buildvi', true);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/report_post', true);
     xhr.onload = function() {
       try {
         var data = JSON.parse(xhr.responseText);
@@ -415,6 +415,17 @@
     if (targetUser === CURRENT_USER) { alert("自分にはDMを送れません。"); return; }
     activeDMTarget = targetUser; document.getElementById('dm-target-user').innerText = targetUser;
     renderDMLog(); document.getElementById('dm-modal').style.display = 'flex';
+    var pairKey = dmPairKey(CURRENT_USER, targetUser);
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/dm/list?sid=' + encodeURIComponent(SID || '') + '&target=' + encodeURIComponent(targetUser), true);
+    xhr.onload = function() {
+      try {
+        var data = JSON.parse(xhr.responseText);
+        if (data.status === 'ok') LATEST_DMS[pairKey] = data.messages || [];
+      } catch(e) {}
+      if (activeDMTarget === targetUser) renderDMLog();
+    };
+    xhr.send();
   }
   function closeDM() { document.getElementById('dm-modal').style.display = 'none'; }
 
@@ -453,19 +464,32 @@
   function sendDM() {
     if (!checkLog()) return;
     var inp = document.getElementById('dm-input'); var text = inp.value.trim(); if (!text) return;
-    var fd = new FormData(); fd.append('action_type', 'send_dm'); fd.append('sid', SID);
-    fd.append('target_user', activeDMTarget); fd.append('text', text);
-    var xhr = new XMLHttpRequest(); xhr.open('POST', '/buildvi', true);
-    xhr.onload = function() { inp.value = ''; load(); };
+    var fd = new FormData(); fd.append('sid', SID);
+    fd.append('target', activeDMTarget); fd.append('text', text);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/dm/send', true);
+    xhr.onload = function() {
+      try {
+        var data = JSON.parse(xhr.responseText);
+        if (data.status === 'ok') {
+          inp.value = '';
+          var pairKey = dmPairKey(CURRENT_USER, activeDMTarget);
+          if (!LATEST_DMS[pairKey]) LATEST_DMS[pairKey] = [];
+          LATEST_DMS[pairKey].push(data.message);
+          renderDMLog();
+        } else {
+          alert('エラー: ' + (data.error || '送信に失敗しました'));
+        }
+      } catch(e) {}
+    };
     xhr.send(fd);
   }
 
   function reportDM(messageId, targetUser) {
     var reason = prompt("通報理由を入力してください:");
     if (!reason) return;
-    var fd = new FormData(); fd.append('action_type', 'report_dm'); fd.append('sid', SID);
-    fd.append('target_user', targetUser); fd.append('message_id', messageId); fd.append('reason', reason);
-    var xhr = new XMLHttpRequest(); xhr.open('POST', '/buildvi', true);
+    var fd = new FormData(); fd.append('sid', SID);
+    fd.append('target', targetUser); fd.append('message_id', messageId); fd.append('reason', reason);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/report_dm', true);
     xhr.onload = function() {
       try {
         var data = JSON.parse(xhr.responseText);
