@@ -316,6 +316,7 @@
   var isPosting = false;
   var currentThread = '';
   var activeDMTarget = '';
+  var LATEST_POSTS = [];
 
   function updateUIVisibility() {
     var isLoggedIn = (SID && SID !== "None" && SID !== "");
@@ -325,27 +326,65 @@
     if (settingsBtn) settingsBtn.style.display = isLoggedIn ? 'inline-block' : 'none';
   }
 
-  function getCustomThreads() { try { return JSON.parse(localStorage.getItem('custom_threads') || '[]'); } catch(e) { return []; } }
+  var SERVER_THREADS = []; // {id, name, creator} をサーバーから取得して保持
+
+  function fetchThreads(callback) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/thread/list', true);
+    xhr.onload = function() {
+      try {
+        var data = JSON.parse(xhr.responseText);
+        if (data.status === 'ok') SERVER_THREADS = data.threads || [];
+      } catch(e) {}
+      if (callback) callback();
+    };
+    xhr.onerror = function() { if (callback) callback(); };
+    xhr.send();
+  }
+
   function renderThreadTabs() {
     var container = document.getElementById('thread-tabs-container');
-    var threads = getCustomThreads();
-    var html = '';
-    threads.forEach(function(t) {
-      var isActive = (currentThread === t) ? 'active' : '';
-      var safe = t.replace(/'/g, "\\'");
-      html += '<div class="thread-tab ' + isActive + '" style="display:inline-flex; align-items:center; gap:6px;">'
-        + '<span onclick="switchThread(\'' + safe + '\', this)" style="cursor:pointer;">💬 ' + t + '</span>'
-        + '<span onclick="removeThread(\'' + safe + '\')" title="このスレッドを削除" style="cursor:pointer; opacity:0.7; font-weight:bold;">×</span>'
-        + '</div>';
+    // 「通常」タブを常に一番左に表示し、今どちらを見ているか一目で分かるようにする
+    var normalActive = (currentThread === '') ? 'active' : '';
+    var html = '<div class="thread-tab ' + normalActive + '" onclick="switchToNormal()" style="cursor:pointer;">🏠 通常</div>';
+    SERVER_THREADS.forEach(function(t) {
+      var isActive = (currentThread === t.name) ? 'active' : '';
+      var safe = t.name.replace(/'/g, "\\'");
+      var isOwner = (t.creator === CURRENT_USER);
+      html += '<div class="thread-tab ' + isActive + '" style="display:inline-flex; align-items:center; gap:6px;" title="作成者: ' + t.creator + '">'
+        + '<span onclick="switchThread(\'' + safe + '\')" style="cursor:pointer;">💬 ' + t.name + '</span>';
+      // ★削除(×)ボタンは作成者本人にしか表示しない。
+      //   他人の投稿を消せてしまう入口をそもそもUI上に出さないため。
+      if (isOwner) {
+        html += '<span onclick="removeThread(\'' + t.id + '\', \'' + safe + '\')" title="このスレッドを削除（中の投稿も全部消えます）" style="cursor:pointer; opacity:0.7; font-weight:bold;">×</span>';
+      }
+      html += '</div>';
     });
     container.innerHTML = html;
   }
-  function removeThread(thread) {
-    if (!confirm('スレッド「' + thread + '」を削除しますか？（投稿自体は削除されません）')) return;
-    var threads = getCustomThreads().filter(function(t) { return t !== thread; });
-    try { localStorage.setItem('custom_threads', JSON.stringify(threads)); } catch(e) {}
-    if (currentThread === thread) { currentThread = ''; document.getElementById('post-thread-input').value = ''; }
+  function switchToNormal() {
+    currentThread = '';
+    document.getElementById('post-thread-input').value = '';
     renderThreadTabs(); filterPosts();
+  }
+  function removeThread(threadId, threadName) {
+    // 作成者本人であることはサーバー側でも必ず再チェックする。
+    // ここではその結果を待って、成功した場合だけ画面から消す。
+    if (!confirm('スレッド「' + threadName + '」を削除しますか？\nこのスレ内の投稿（他の人の投稿も含めて）全て削除されます。')) return;
+    var fd = new FormData(); fd.append('sid', SID); fd.append('thread_id', threadId);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/thread/delete', true);
+    xhr.onload = function() {
+      try {
+        var data = JSON.parse(xhr.responseText);
+        if (data.status === 'ok') {
+          if (currentThread === threadName) { currentThread = ''; document.getElementById('post-thread-input').value = ''; }
+          fetchThreads(function() { renderThreadTabs(); load(); });
+        } else {
+          alert('エラー: ' + (data.error || '削除に失敗しました'));
+        }
+      } catch(e) {}
+    };
+    xhr.send(fd);
   }
 
   function createThread() {
@@ -354,13 +393,21 @@
     if (!name) return;
     name = name.trim();
     if (!name) return;
-    var threads = getCustomThreads();
-    if (threads.indexOf(name) !== -1) { alert("既に存在します。"); return; }
-    threads.push(name);
-    try { localStorage.setItem('custom_threads', JSON.stringify(threads)); } catch(e) {}
-    currentThread = name;
-    document.getElementById('post-thread-input').value = currentThread;
-    renderThreadTabs(); filterPosts();
+    var fd = new FormData(); fd.append('sid', SID); fd.append('name', name);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/thread/create', true);
+    xhr.onload = function() {
+      try {
+        var data = JSON.parse(xhr.responseText);
+        if (data.status === 'ok') {
+          currentThread = data.thread.name;
+          document.getElementById('post-thread-input').value = currentThread;
+          fetchThreads(function() { renderThreadTabs(); filterPosts(); });
+        } else {
+          alert('エラー: ' + (data.error || '作成に失敗しました'));
+        }
+      } catch(e) {}
+    };
+    xhr.send(fd);
   }
 
   function switchThread(thread, btn) {
@@ -383,7 +430,11 @@
     posts.forEach(function(p) {
       var text = p.innerText.toLowerCase();
       var postThread = p.getAttribute('data-thread') || '';
-      var matchesThread = (currentThread === '' || postThread === currentThread);
+      // 「通常」表示(currentThread === '')のときはスレに属さない投稿だけを表示し、
+      // 特定のスレを選んでいる時はそのスレの投稿だけを表示する。
+      // (以前は currentThread === '' の時に無条件で true になっていたため、
+      //  通常表示にスレの投稿まで混ざって出てしまっていた)
+      var matchesThread = (currentThread === '') ? (postThread === '') : (postThread === currentThread);
       var matchesSearch = text.includes(query);
       p.style.display = (matchesThread && matchesSearch) ? 'block' : 'none';
     });
@@ -456,9 +507,45 @@
         row.appendChild(repBtn);
       }
 
+      // ★自分が送ったメッセージは、送信から1時間以内なら取り消せる
+      //   (最終判定はサーバー側でも行うので、ここはあくまでUI上の目安)
+      if (msg.sender === CURRENT_USER && msg.text !== null && msg.text !== undefined && msg.created_at) {
+        var sentMs = Date.parse(msg.created_at);
+        var withinWindow = !isNaN(sentMs) && (Date.now() - sentMs) <= (60 * 60 * 1000);
+        if (withinWindow) {
+          var unsendBtn = document.createElement('span');
+          unsendBtn.style.cssText = "margin-left:8px; font-size:0.7em; color:#f44336; cursor:pointer;";
+          unsendBtn.textContent = '↩ 取り消し'; unsendBtn.title = '送信から1時間以内なら取り消せます';
+          unsendBtn.onclick = function() { unsendDM(msg.id); };
+          row.appendChild(unsendBtn);
+        }
+      }
+
       logDiv.appendChild(row);
     });
     logDiv.scrollTop = logDiv.scrollHeight;
+  }
+
+  function unsendDM(messageId) {
+    if (!confirm('このメッセージの送信を取り消しますか？（相手の画面からも消えます）')) return;
+    var fd = new FormData(); fd.append('sid', SID);
+    fd.append('target', activeDMTarget); fd.append('message_id', messageId);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', '/dm/unsend', true);
+    xhr.onload = function() {
+      try {
+        var data = JSON.parse(xhr.responseText);
+        if (data.status === 'ok') {
+          var pairKey = dmPairKey(CURRENT_USER, activeDMTarget);
+          if (LATEST_DMS[pairKey]) {
+            LATEST_DMS[pairKey] = LATEST_DMS[pairKey].filter(function(m) { return String(m.id) !== String(messageId); });
+          }
+          renderDMLog();
+        } else {
+          alert('エラー: ' + (data.error || '取り消しに失敗しました'));
+        }
+      } catch(e) {}
+    };
+    xhr.send(fd);
   }
 
   function sendDM() {
@@ -1134,7 +1221,8 @@ function doLogin() {
   }
 
   function load() {
-    updateUIVisibility(); renderThreadTabs();
+    updateUIVisibility();
+    fetchThreads(renderThreadTabs);
     var searchBox = document.getElementById('post-search'); if (searchBox) searchBox.value = '';
     var xhr1 = new XMLHttpRequest(); xhr1.open('GET', '/buildvi?get_type=json&sid=' + encodeURIComponent(SID || ''), true);
     xhr1.onload = function() {
@@ -1193,6 +1281,7 @@ function doLogin() {
 
       var parents = posts.filter(function(p) { return !p.reply_to; }); var replies = posts.filter(function(p) { return p.reply_to; });
       var reversed = parents.slice().reverse();
+      LATEST_POSTS = posts;
 
       // 【要件適用】投稿ログをループしながら実際に「投稿されたファイルのみ」をギャラリーに表示
       for (var i = 0; i < reversed.length; i++) {
