@@ -19,7 +19,7 @@ import string
 import uuid
 import secrets
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ─────────────────────────────────────────
 # 基本設定
@@ -365,50 +365,86 @@ def saveposts(posts, allow_empty=False):
         supabase.table("posts").upsert(posts).execute()
 
 def load_dms():
-    """dm_messages テーブル → {pair_key: [messages]}"""
+    """dm_messages テーブル → {pair_key: [messages]}
+    ★以前の loadposts() と同じバグがあった。通信失敗を握りつぶして {} を
+      返すと、直後の save_dms() が「今DBにあるはずの全DM」を消してから
+      この空(に近い)データで上書きしてしまい、全ユーザーのDMが消える
+      事故になり得る。読み込み失敗は例外として伝播させ、その場の処理を
+      中断させるのが正しい。"""
     if supabase is None:
         return {}
-    try:
-        res = supabase.table("dm_messages").select("*").execute()
-        dms = {}
-        for row in res.data:
-            key = row.get("pair_key")
-            if key not in dms:
-                dms[key] = []
-            dms[key].append({
-                "id": row.get("id"),
-                "sender": row.get("sender"),
-                "text": row.get("text"),
-                "time": row.get("time"),
-            })
-        return dms
-    except Exception as e:
-        print("load_dmsエラー:", e)
-        return {}
+    res = supabase.table("dm_messages").select("*").execute()
+    dms = {}
+    for row in res.data:
+        key = row.get("pair_key")
+        if key not in dms:
+            dms[key] = []
+        dms[key].append({
+            "id": row.get("id"),
+            "sender": row.get("sender"),
+            "text": row.get("text"),
+            "time": row.get("time"),
+            "created_at": row.get("created_at"),
+        })
+    return dms
 
 def save_dms(dms):
-    """dms を dm_messages テーブルに全入れ替え"""
+    """dms を dm_messages テーブルに全入れ替え。
+    ★ここも例外を握りつぶさない。delete/insertが失敗したのに
+      呼び出し元が「保存できた」と思い込むのを防ぐ。"""
     if supabase is None:
         return
-    try:
-        try:
-            supabase.table("dm_messages").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
-        except:
-            pass
-        rows = []
-        for pair_key, msgs in dms.items():
-            for msg in msgs:
-                rows.append({
-                    "id": msg.get("id", str(uuid.uuid4())),
-                    "pair_key": pair_key,
-                    "sender": msg.get("sender"),
-                    "text": msg.get("text"),
-                    "time": msg.get("time"),
-                })
-        if rows:
-            supabase.table("dm_messages").insert(rows).execute()
-    except Exception as e:
-        print("save_dmsエラー:", e)
+    supabase.table("dm_messages").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+    rows = []
+    for pair_key, msgs in dms.items():
+        for msg in msgs:
+            rows.append({
+                "id": msg.get("id", str(uuid.uuid4())),
+                "pair_key": pair_key,
+                "sender": msg.get("sender"),
+                "text": msg.get("text"),
+                "time": msg.get("time"),
+                "created_at": msg.get("created_at"),
+            })
+    if rows:
+        supabase.table("dm_messages").insert(rows).execute()
+
+# ─────────────────────────────────────────
+# 🧵 スレッド（サーバー側で「誰が作ったか」を管理する実体）
+# ─────────────────────────────────────────
+# ★以前はスレを各端末のlocalStorageだけで管理していたため、
+#   「誰が作ったか」をサーバーが一切把握できず、他人が同名のスレを
+#   作れてしまい、「スレ削除＝中の投稿も消す」を実装すると無関係な人の
+#   投稿まで巻き込んで消えてしまう問題があった。
+#   ここでスレをちゃんとテーブルとして持たせ、作成者だけが削除できる
+#   ようにする。
+def load_threads():
+    """threads テーブル → リスト。読み込み失敗は例外として伝播させる
+    （loadposts/load_dmsと同じ理由）。"""
+    if supabase is None:
+        return []
+    res = supabase.table("threads").select("*").execute()
+    return res.data or []
+
+def save_threads(threads, allow_empty=False):
+    """threads テーブルを、渡されたリストの内容に完全に同期させる。"""
+    if supabase is None:
+        return
+    keep_ids = [t["id"] for t in threads if t.get("id")]
+    existing = supabase.table("threads").select("id").execute().data or []
+    existing_ids = [row["id"] for row in existing]
+    to_delete = [i for i in existing_ids if i not in keep_ids]
+
+    if existing_ids and not threads and not allow_empty:
+        raise RuntimeError(
+            "save_threads: 既存スレが{}件あるのに空リストが渡されたため、"
+            "全件削除を防止して処理を中断しました。".format(len(existing_ids))
+        )
+
+    if to_delete:
+        supabase.table("threads").delete().in_("id", to_delete).execute()
+    if threads:
+        supabase.table("threads").upsert(threads).execute()
 
 def load_json_list(path):
     """post_reports / dm_cases を読み込む"""
@@ -1578,6 +1614,7 @@ def dm_send():
         "sender": user["student_name"],
         "text": text,
         "time": datetime.now().strftime("%m/%d %H:%M"),
+        "created_at": datetime.now().isoformat(),
     }
     dms[key].append(msg)
     save_dms(dms)
@@ -1595,6 +1632,128 @@ def dm_list():
         return flask.jsonify({"status": "error", "error": "宛先が不正です"}), 400
     logs = dm_history_visible_to(user["student_name"], target)
     return flask.jsonify({"status": "ok", "messages": logs})
+
+
+# ─────────────────────────────────────────
+# ↩️ DMメッセージの送信取り消し（送信から1時間以内・自分の送信分のみ）
+# ─────────────────────────────────────────
+DM_UNSEND_WINDOW = timedelta(hours=1)
+
+@app.route("/dm/unsend", methods=["POST"])
+def dm_unsend():
+    import flask
+    sid = flask.request.form.get("sid")
+    target = (flask.request.form.get("target") or "").strip()
+    message_id = flask.request.form.get("message_id")
+    user = USER_SESSIONS.get(sid)
+    if not user:
+        return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
+    if not target or not message_id:
+        return flask.jsonify({"status": "error", "error": "入力内容が不正です"}), 400
+
+    dms = load_dms()
+    key = dm_pair_key(user["student_name"], target)
+    logs = dms.get(key, [])
+    target_msg = next((m for m in logs if str(m.get("id")) == str(message_id)), None)
+    if not target_msg:
+        return flask.jsonify({"status": "error", "error": "メッセージが見つかりません"}), 404
+
+    # ★自分が送ったメッセージしか取り消せない（他人の受信メッセージを勝手に
+    #   消せてしまうと、それはそれで別の悪用経路になるため）
+    if target_msg.get("sender") != user["student_name"]:
+        return flask.jsonify({"status": "error", "error": "自分が送信したメッセージのみ取り消せます"}), 403
+
+    created_at_raw = target_msg.get("created_at")
+    sent_time = None
+    if created_at_raw:
+        try:
+            sent_time = datetime.fromisoformat(created_at_raw)
+        except Exception:
+            sent_time = None
+    if sent_time is None:
+        # この機能を追加する前に送られた古いメッセージには created_at が無く、
+        # 経過時間を正しく判定できないため、安全側に倒して取り消しを許可しない
+        return flask.jsonify({"status": "error", "error": "このメッセージは取り消しできません"}), 400
+
+    if datetime.now() - sent_time > DM_UNSEND_WINDOW:
+        return flask.jsonify({"status": "error", "error": "送信から1時間を過ぎているため取り消せません"}), 400
+
+    dms[key] = [m for m in logs if str(m.get("id")) != str(message_id)]
+    save_dms(dms)
+    return flask.jsonify({"status": "ok"})
+
+
+# ─────────────────────────────────────────
+# 🧵 スレッドの一覧・作成・削除
+# ─────────────────────────────────────────
+@app.route("/thread/list")
+def thread_list():
+    threads = load_threads()
+    # 投稿フォーム等に渡すのは最低限の情報だけでよい
+    out = [{"id": t.get("id"), "name": t.get("name"), "creator": t.get("creator")} for t in threads]
+    return flask.jsonify({"status": "ok", "threads": out})
+
+@app.route("/thread/create", methods=["POST"])
+def thread_create():
+    sid = flask.request.form.get("sid")
+    name = (flask.request.form.get("name") or "").strip()
+    user = USER_SESSIONS.get(sid)
+    if not user:
+        return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
+    if not name:
+        return flask.jsonify({"status": "error", "error": "スレ名を入力してください"}), 400
+    if len(name) > 50:
+        return flask.jsonify({"status": "error", "error": "スレ名は50文字以内にしてください"}), 400
+
+    threads = load_threads()
+    # ★大文字小文字や前後の空白の違いだけの「同名スレ」を防ぐ
+    #   (これを許すと、削除時に「どっちの投稿を消すか」が曖昧になってしまう)
+    if any((t.get("name") or "").strip().lower() == name.lower() for t in threads):
+        return flask.jsonify({"status": "error", "error": "同じ名前のスレッドが既にあります"}), 400
+
+    new_thread = {
+        "id": str(uuid.uuid4()),
+        "name": name,
+        "creator": user["student_name"],
+        "created_at": datetime.now().isoformat(),
+    }
+    threads.append(new_thread)
+    save_threads(threads)
+    return flask.jsonify({"status": "ok", "thread": {"id": new_thread["id"], "name": name, "creator": user["student_name"]}})
+
+@app.route("/thread/delete", methods=["POST"])
+def thread_delete():
+    sid = flask.request.form.get("sid")
+    thread_id = flask.request.form.get("thread_id")
+    user = USER_SESSIONS.get(sid)
+    if not user:
+        return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
+    if not thread_id:
+        return flask.jsonify({"status": "error", "error": "入力内容が不正です"}), 400
+
+    threads = load_threads()
+    target = next((t for t in threads if str(t.get("id")) == str(thread_id)), None)
+    if not target:
+        return flask.jsonify({"status": "error", "error": "スレッドが見つかりません"}), 404
+
+    # ★作成者本人だけが削除できる。ここが今回の核心。
+    if target.get("creator") != user["student_name"]:
+        return flask.jsonify({"status": "error", "error": "このスレッドを削除できるのは作成者のみです"}), 403
+
+    thread_name = target.get("name")
+
+    # スレそのものを削除
+    remaining_threads = [t for t in threads if str(t.get("id")) != str(thread_id)]
+    save_threads(remaining_threads, allow_empty=True)
+
+    # スレの中の投稿も、投稿者を問わず全部削除する
+    # (ownershipが確認できているので、ここは他人の投稿を含めて消して問題ない)
+    ps = loadposts()
+    deleted_count = sum(1 for p in ps if p.get("thread") == thread_name)
+    ps = [p for p in ps if p.get("thread") != thread_name]
+    saveposts(ps, allow_empty=True)
+
+    return flask.jsonify({"status": "ok", "deleted_posts": deleted_count})
 
 
 # ─────────────────────────────────────────
