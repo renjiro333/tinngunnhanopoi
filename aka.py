@@ -1691,25 +1691,25 @@ def thread_list():
     threads = load_threads()
     # 投稿フォーム等に渡すのは最低限の情報だけでよい
     out = [{"id": t.get("id"), "name": t.get("name"), "creator": t.get("creator")} for t in threads]
-    return flask.jsonify({"status": "ok", "threads": out})
+    return jsonify({"status": "ok", "threads": out})
 
 @app.route("/thread/create", methods=["POST"])
 def thread_create():
-    sid = flask.request.form.get("sid")
-    name = (flask.request.form.get("name") or "").strip()
+    sid = request.form.get("sid")
+    name = (request.form.get("name") or "").strip()
     user = USER_SESSIONS.get(sid)
     if not user:
-        return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
+        return jsonify({"status": "error", "error": "ログインしてください"}), 401
     if not name:
-        return flask.jsonify({"status": "error", "error": "スレ名を入力してください"}), 400
+        return jsonify({"status": "error", "error": "スレ名を入力してください"}), 400
     if len(name) > 50:
-        return flask.jsonify({"status": "error", "error": "スレ名は50文字以内にしてください"}), 400
+        return jsonify({"status": "error", "error": "スレ名は50文字以内にしてください"}), 400
 
     threads = load_threads()
     # ★大文字小文字や前後の空白の違いだけの「同名スレ」を防ぐ
     #   (これを許すと、削除時に「どっちの投稿を消すか」が曖昧になってしまう)
     if any((t.get("name") or "").strip().lower() == name.lower() for t in threads):
-        return flask.jsonify({"status": "error", "error": "同じ名前のスレッドが既にあります"}), 400
+        return jsonify({"status": "error", "error": "同じ名前のスレッドが既にあります"}), 400
 
     new_thread = {
         "id": str(uuid.uuid4()),
@@ -1719,26 +1719,26 @@ def thread_create():
     }
     threads.append(new_thread)
     save_threads(threads)
-    return flask.jsonify({"status": "ok", "thread": {"id": new_thread["id"], "name": name, "creator": user["student_name"]}})
+    return jsonify({"status": "ok", "thread": {"id": new_thread["id"], "name": name, "creator": user["student_name"]}})
 
 @app.route("/thread/delete", methods=["POST"])
 def thread_delete():
-    sid = flask.request.form.get("sid")
-    thread_id = flask.request.form.get("thread_id")
+    sid = request.form.get("sid")
+    thread_id = request.form.get("thread_id")
     user = USER_SESSIONS.get(sid)
     if not user:
-        return flask.jsonify({"status": "error", "error": "ログインしてください"}), 401
+        return jsonify({"status": "error", "error": "ログインしてください"}), 401
     if not thread_id:
-        return flask.jsonify({"status": "error", "error": "入力内容が不正です"}), 400
+        return jsonify({"status": "error", "error": "入力内容が不正です"}), 400
 
     threads = load_threads()
     target = next((t for t in threads if str(t.get("id")) == str(thread_id)), None)
     if not target:
-        return flask.jsonify({"status": "error", "error": "スレッドが見つかりません"}), 404
+        return jsonify({"status": "error", "error": "スレッドが見つかりません"}), 404
 
     # ★作成者本人だけが削除できる。ここが今回の核心。
     if target.get("creator") != user["student_name"]:
-        return flask.jsonify({"status": "error", "error": "このスレッドを削除できるのは作成者のみです"}), 403
+        return jsonify({"status": "error", "error": "このスレッドを削除できるのは作成者のみです"}), 403
 
     thread_name = target.get("name")
 
@@ -1753,7 +1753,7 @@ def thread_delete():
     ps = [p for p in ps if p.get("thread") != thread_name]
     saveposts(ps, allow_empty=True)
 
-    return flask.jsonify({"status": "ok", "deleted_posts": deleted_count})
+    return jsonify({"status": "ok", "deleted_posts": deleted_count})
 
 
 # ─────────────────────────────────────────
